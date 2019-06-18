@@ -222,6 +222,11 @@ ip_update disasm_next_branch(disasm* self, uint64_t ip)
             if(branch.type != INS_INVALID)
                 break;
         }
+        
+        // Freeing the instructions
+        if(count > 0) {
+            cs_free(insn, count);
+        }
 
         // As we read all available instructions in the buffer we can
         // set the count to -1.
