@@ -1,6 +1,3 @@
-#include "ptrace_backend.h"
-#include "types.h"
-
 #include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
@@ -14,10 +11,15 @@
 
 #include <capstone/capstone.h>
 
-static csh cap_handle;
+#include "ptrace_backend.h"
+#include "disasm.h"
+#include "types.h"
+
+static disasm* disas;
+static pid_t child;
 
 // We only read into long aligned buffers because it is easier
-void ptrace_read_mem(pid_t child, unsigned long addr, void* buff, unsigned len)
+static void ptrace_read_mem(pid_t child, unsigned long addr, void* buff, unsigned len)
 {
     long* wbuff = (long*)buff;
 
@@ -27,92 +29,12 @@ void ptrace_read_mem(pid_t child, unsigned long addr, void* buff, unsigned len)
     }
 }
 
-static size_t process_instruction(cs_insn* ins, ip_update* branch)
+// Callback function for disassembly interface
+static int read_ptrace(disasm* self, uint64_t addr, size_t len, void* buff)
 {
-    cs_detail* d = ins->detail;
-    cs_x86_op ins_arg;
+    ptrace_read_mem(child, addr, buff, len);
 
-    printf("0x%llx: %s %s\n", ins->address, ins->mnemonic,
-            ins->op_str);
-
-    for(int j = 0; j < d->groups_count; j++) {
-        switch(d->groups[j]) {
-            case X86_GRP_JUMP:
-                branch->address = ins->address;
-
-                // A jump has at least an argument
-                ins_arg = d->x86.operands[0];
-
-                if(ins_arg.type == X86_OP_IMM) {
-                    branch->target_ok = ins_arg.imm;
-
-                    if(ins->id == X86_INS_JMP) {
-                        branch->type = INS_JMP;
-                    } else {
-                        // Conditional branch
-                        branch->type = INS_JCC;
-                        branch->target_fail = ins->address + ins->size;
-                    }
-                } else {
-                    branch->type = INS_JMP_IND;
-                }
-
-                break;
-            case X86_GRP_RET:
-                branch->address = ins->address;
-                branch->type = INS_RET;
-                break;
-            case X86_GRP_CALL:
-                branch->address = ins->address;
-
-                ins_arg = d->x86.operands[0];
-
-                if(ins_arg.type == X86_OP_IMM) {
-                    branch->type = INS_CALL;
-                    branch->target_ok = ins_arg.imm;
-                } else {
-                    branch->type = INS_CALL_IND;
-                }
-
-                break;
-        }
-    }
-    return ins->size;
-}
-
-static ip_update process_bb(pid_t child, unsigned long long rip)
-{
-    char isnbuf[512];
-    size_t count = 0;
-    ip_update branch = {0};
-    cs_insn *insn;
-
-    branch.type = INS_INVALID;
-
-    while(branch.type == INS_INVALID) {
-        // If we have 0 instructions in the buffer we read from rip
-        if(count == 0) {
-            ptrace_read_mem(child, rip, isnbuf, sizeof(isnbuf));
-            count = cs_disasm(cap_handle, isnbuf, sizeof(isnbuf), rip, 0, &insn);
-        }
-
-        for(int i = 0; i < count; i++) {
-            rip += process_instruction(&insn[i], &branch);
-
-            if(branch.type != INS_INVALID)
-                break;
-        }
-
-        if(count == 0) { // something weird happened
-            abort();
-        }
-
-        // As we read all available instructions in the buffer we can
-        // set the count to 0.
-        count = 0;
-    }
-
-    return branch;
+    return len;
 }
 
 static int do_trace(pid_t child)
@@ -176,7 +98,18 @@ static int do_trace(pid_t child)
 
         //printf("0x%llx\n", regs.rip);
 
-        ip_update br = process_bb(child, regs.rip);
+        //ip_update br = process_bb(child, regs.rip);
+        ip_update br = disasm_next_branch(disas, regs.rip);
+        
+        if(br.type == INS_INVALID) {
+            // We reached an invalid instruction while decoding a besic block
+            fclose(out);
+
+            return -1;
+        }
+
+        // TODO: Find a way to have proper branches most of the time
+        // filter out calls/ret/etc...
 
         // We check if it is the first jump of the chain
         if(next_jump.type == INS_INVALID) {
@@ -186,11 +119,11 @@ static int do_trace(pid_t child)
                 if(regs.rip == next_jump.target_ok) {
                     // Branch taken
                     printf("0x%llx -> 0x%llx\n", next_jump.address, 
-                            next_jump.target_ok);
+                        next_jump.target_ok);
                 } else {
                     // Branch not taken
                     printf("0x%llx -> 0x%llx\n", next_jump.address,
-                            next_jump.target_fail);
+                           next_jump.target_fail);
                 }
             }
         }
@@ -230,7 +163,7 @@ static int do_trace(pid_t child)
 
 int do_ptrace(char** argv, char** envp)
 {
-    pid_t child = fork();
+    child = fork();
 
     if(child == -1) {
         fprintf(stderr, "fork failed\n");
@@ -251,17 +184,15 @@ int do_ptrace(char** argv, char** envp)
         execve(argv[1], &argv[1], envp);
         fprintf(stderr, "execution failed\n");
     } else {
-        if(cs_open(CS_ARCH_X86, CS_MODE_64, &cap_handle) != CS_ERR_OK) {
+        disas = disasm_new(read_ptrace);
+
+        if(!disas) {
             fprintf(stderr, "Could not init capstone\n");
             return -1;
         }
 
-        // Enabling instruction details
-        cs_option(cap_handle, CS_OPT_DETAIL, CS_OPT_ON);
-
         int retcode = do_trace(child);
-
-        cs_close(&cap_handle);
+        disasm_free(disas);
 
         return retcode;
     }

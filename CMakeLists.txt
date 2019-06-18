@@ -6,6 +6,7 @@ find_library(LIB_CAPSTONE capstone)
 
 set(SOURCES
     src/main.c
+    src/disasm.c
     src/ptrace_backend.c)
 
 include_directories(include)
