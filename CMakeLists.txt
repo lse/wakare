@@ -7,7 +7,9 @@ find_library(LIB_CAPSTONE capstone)
 set(SOURCES
     src/main.c
     src/disasm.c
-    src/ptrace_backend.c)
+    src/ptrace_backend.c
+    src/trace_writer.c
+    src/utils.c)
 
 include_directories(include)
 

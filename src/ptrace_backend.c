@@ -14,6 +14,8 @@
 #include "ptrace_backend.h"
 #include "disasm.h"
 #include "types.h"
+#include "utils.h"
+#include "trace_writer.h"
 
 static disasm* disas;
 static pid_t child;
@@ -42,7 +44,9 @@ static int do_trace(pid_t child)
     int status = 0;
     struct user_regs_struct regs;
     ip_update next_jump = {0};
+    trace_writer stream;
 
+    trace_writer_init(&stream);
     next_jump.type = INS_INVALID;
 
     pid_t id = waitpid(child, &status, 0);
@@ -54,9 +58,7 @@ static int do_trace(pid_t child)
         return -1;
     }
 
-    FILE* out = fopen("trace.data", "wb");
-
-    if(out == NULL) {
+    if(trace_writer_begin(&stream, "out.trace") < 0) {
         perror("ptrace");
         return -1;
     }
@@ -68,24 +70,14 @@ static int do_trace(pid_t child)
             break;
 
         if((status >> 8) == (SIGTRAP | PTRACE_EVENT_EXIT << 8)) {
-            FILE* fp = fopen("trace.map", "wb");
+            mempage* page_list = mempages_get(child);
 
-            if(fp == NULL) {
-                fprintf(stderr, "could not open map file\n");
-            } else {
-                /*mempage* page_list = mempages_get(child);
+            for(mempage* it = page_list; it != NULL; it = it->next) {
+                if(it->perms & PERM_X) {
+                    trace_writer_addmap(&stream, it->start, it->end);
+                }
 
-                  for(mempage* it = page_list; it != NULL; it = it->next) {
-                  printf("%lx - %lx : %02x\n", it->start, it->end, it->perms);
-
-                  fwrite(&it->start, sizeof(long), 1, fp);
-                  fwrite(&it->end, sizeof(long), 1, fp);
-                  fwrite(&it->perms, sizeof(char), 1, fp);
-
-                  free(it); // UAF
-                  }
-
-                  fclose(fp);*/
+                free(it); // UAF
             }
 
             break;
@@ -96,20 +88,13 @@ static int do_trace(pid_t child)
             return -1;
         }
 
-        //printf("0x%llx\n", regs.rip);
-
-        //ip_update br = process_bb(child, regs.rip);
         ip_update br = disasm_next_branch(disas, regs.rip);
         
         if(br.type == INS_INVALID) {
-            // We reached an invalid instruction while decoding a besic block
-            fclose(out);
+            // We reached an invalid instruction while decoding a basic block
 
             return -1;
         }
-
-        // TODO: Find a way to have proper branches most of the time
-        // filter out calls/ret/etc...
 
         // We check if it is the first jump of the chain
         if(next_jump.type == INS_INVALID) {
@@ -118,45 +103,33 @@ static int do_trace(pid_t child)
             if(next_jump.type == INS_JCC) {
                 if(regs.rip == next_jump.target_ok) {
                     // Branch taken
-                    printf("0x%llx -> 0x%llx\n", next_jump.address, 
-                        next_jump.target_ok);
+                    trace_writer_addedge(&stream, next_jump.address,
+                            next_jump.target_ok);
                 } else {
                     // Branch not taken
-                    printf("0x%llx -> 0x%llx\n", next_jump.address,
-                           next_jump.target_fail);
+                    trace_writer_addedge(&stream, next_jump.address,
+                            next_jump.target_fail);
                 }
+            }
+
+            if(next_jump.type == INS_JMP) {
+                trace_writer_addedge(&stream, next_jump.address,
+                        next_jump.target_ok);
             }
         }
 
         next_jump = br;
 
-        /*
-        if(br.type == INS_JMP) {
-            printf("JMP: 0x%llx -> 0x%llx\n", br.address, br.target_ok);
-        }
-
-        if(br.type == INS_JCC) {
-            printf("JCC: 0x%llx -> 0x%llx (fail 0x%llx)\n",
-                    br.address, br.target_ok, br.target_fail);
-        }
-
-        if(br.type == INS_CALL) {
-            printf("CALL: 0x%llx -> 0x%llx\n", br.address, br.target_ok);
-        }
-
-        if(br.type == INS_RET) {
-            printf("RET: 0x%llx\n", br.address);
-        }
-        */
-
         if(ptrace(PTRACE_SINGLEBLOCK, child, NULL, NULL) < 0) {
             perror("ptrace");
-            fclose(out);
             return -1;
         }
     }
 
-    fclose(out);
+    trace_writer_save(&stream);
+
+    printf("Collected %llu branches and %llu maps\n", stream.edge_count,
+            stream.map_count);
 
     return 0;
 }
