@@ -9,8 +9,6 @@
 #include <sys/user.h>
 #include <sys/syscall.h>
 
-#include <capstone/capstone.h>
-
 #include "ptrace_backend.h"
 #include "disasm.h"
 #include "types.h"
@@ -134,7 +132,7 @@ static int do_trace(pid_t child)
     return 0;
 }
 
-int do_ptrace(char** argv, char** envp)
+int do_ptrace_trace(char** argv, char** envp)
 {
     child = fork();
 
@@ -154,7 +152,7 @@ int do_ptrace(char** argv, char** envp)
         // Stopping process to let ptrace attach
         raise(SIGSTOP);
 
-        execve(argv[1], &argv[1], envp);
+        execve(argv[0], &argv[0], envp);
         fprintf(stderr, "execution failed\n");
     } else {
         disas = disasm_new(read_ptrace);

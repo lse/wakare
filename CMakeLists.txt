@@ -8,7 +8,9 @@ set(SOURCES
     src/main.c
     src/disasm.c
     src/ptrace_backend.c
+    src/pt_backend.c
     src/trace_writer.c
+    src/perf_file.c
     src/utils.c)
 
 include_directories(include)

@@ -73,3 +73,9 @@ mempage* mempages_get(pid_t target)
 
     return page_list;
 }
+
+int align_pagesize(int size)
+{
+    int ps = getpagesize();
+    return (size + ps) & (~(ps - 1));
+}

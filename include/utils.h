@@ -18,4 +18,6 @@ typedef struct mempage_s {
 mempage* mempages_get(pid_t target);
 void mempages_free(mempage* pages);
 
+int align_pagesize(int size);
+
 #endif
