@@ -28,6 +28,8 @@ int trace_writer_begin(trace_writer* t, char* path)
     uint64_t magic = TRACE_MAGIC;
 
     fwrite(&magic, sizeof(uint64_t), 1, t->file);
+
+    return 0;
 }
 
 int trace_writer_save(trace_writer* t)
@@ -35,17 +37,28 @@ int trace_writer_save(trace_writer* t)
     if(!t->file)
         return -1;
 
-    uint64_t tmp;
     size_t size;
     size_t tuple_size = 2 * sizeof(uint64_t);
 
     fseek(t->file, 0, SEEK_END);
     size = ftell(t->file);
+
+    if(sizeof(uint64_t) >= size) {
+        fclose(t->file);
+        t->file = NULL;
+        return -1;
+    }
     
     // Writing the edge count
     fseek(t->file, sizeof(uint64_t), SEEK_SET);
     fwrite(&t->edge_count, sizeof(uint64_t), 1, t->file);
     
+    if((t->edge_count + 1) * tuple_size >= size) {
+        fclose(t->file);
+        t->file = NULL;
+        return -1;
+    }
+
     // Writing the map count
     fseek(t->file, (t->edge_count + 1) * tuple_size, SEEK_SET);
     fwrite(&t->map_count, sizeof(uint64_t), 1, t->file);
@@ -56,7 +69,7 @@ int trace_writer_save(trace_writer* t)
     return 0;
 }
 
-int trace_writer_addedge(trace_writer* t, uint64_t from, uint64_t to)
+void trace_writer_addedge(trace_writer* t, uint64_t from, uint64_t to)
 {
     // Writing length header if first call
     if(t->edge_count == 0) {
@@ -69,7 +82,7 @@ int trace_writer_addedge(trace_writer* t, uint64_t from, uint64_t to)
     t->edge_count++;
 }
 
-int trace_writer_addmap(trace_writer* t, uint64_t from, uint64_t to)
+void trace_writer_addmap(trace_writer* t, uint64_t from, uint64_t to)
 {
     // Writing length header if first call
     if(t->map_count == 0) {

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <limits.h>
 #include <sys/types.h>
@@ -9,7 +10,37 @@
 #include "perf_file.h"
 
 static int do_trace(char* full_path) {
-    parse_test(PT_TEMP_FILE);
+    pt_file* ptfile = perf_data_parse(PT_TEMP_FILE);
+
+    if(!ptfile)
+        return -1;
+
+    if(ptfile->size == -1 || ptfile->data == NULL) {
+        fprintf(stderr, "File didn't contain pt data\n");
+        pt_file_free(ptfile);
+        return -1;
+    }
+
+    pt_mapping* target = NULL;
+    
+    // We try to find our executable mappings
+    for(pt_mapping* it = ptfile->maps; it != NULL; it = it->next) {
+        //printf("0x%llx - 0x%llx (real offset: 0x%llx)\t %s\n",
+        //        it->start, it->start + it->size, it->offset, it->filename);
+        
+        if(strcmp(full_path, it->filename) == 0)
+            target = it;
+    }
+
+    if(!target) {
+        fprintf(stderr, "Could not find mappings for file '%s'\n", full_path);
+        pt_file_free(ptfile);
+        return -1;
+    }
+
+    pt_file_free(ptfile);
+
+    return 0;
 }
 
 int do_pt_trace(char** argv, char** envp)
@@ -106,6 +137,7 @@ int do_pt_trace(char** argv, char** envp)
 
     int trace_status = do_trace(full_path);
     free(full_path);
+    free(combined_argv);
 
     return trace_status;
 }

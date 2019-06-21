@@ -58,6 +58,24 @@ typedef struct perf_record_auxtrace_s {
     uint32_t reserved__;
 } perf_record_auxtrace;
 
-int parse_test(char* path);
+// Result struct
+typedef struct pt_mapping_s {
+    struct pt_mapping_s* next;
+    uint64_t start;
+    uint64_t size;
+    uint64_t offset;
+    char* filename;
+} pt_mapping;
+
+typedef struct pt_file_s {
+    pt_mapping* maps;
+    int size;
+    void* data;
+} pt_file;
+
+pt_file* pt_file_new();
+void pt_file_free(pt_file* file);
+
+pt_file* perf_data_parse(char* path);
 
 #endif

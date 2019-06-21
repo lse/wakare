@@ -79,3 +79,33 @@ int align_pagesize(int size)
     int ps = getpagesize();
     return (size + ps) & (~(ps - 1));
 }
+
+// bytestream
+bytestream* bytestream_new(size_t capacity)
+{
+    bytestream* bs = malloc(sizeof(bytestream));
+    bs->capacity = capacity;
+    bs->len = 0;
+    bs->data = malloc(sizeof(capacity));
+
+    return bs;
+}
+
+void bytestream_write(bytestream* bs, void* data, size_t size)
+{
+    if(bs->len + size > bs->capacity) {
+        bs->capacity = 2 * (bs->capacity + size);
+        bs->data = realloc(bs->data, bs->capacity);
+    }
+
+    char* dst = ((char*)bs->data) + bs->len;
+
+    memcpy(dst, data, size);
+    bs->len += size;
+}
+
+void bytestream_free(bytestream* bs)
+{
+    free(bs->data);
+    free(bs);
+}

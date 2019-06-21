@@ -4,6 +4,8 @@ project(tracing)
 find_library(LIB_IPT ipt)
 find_library(LIB_CAPSTONE capstone)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Wall")
+
 set(SOURCES
     src/main.c
     src/disasm.c

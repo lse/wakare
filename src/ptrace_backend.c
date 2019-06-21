@@ -74,8 +74,14 @@ static int do_trace(pid_t child)
                 if(it->perms & PERM_X) {
                     trace_writer_addmap(&stream, it->start, it->end);
                 }
+            }
 
-                free(it); // UAF
+            mempage* it = page_list;
+
+            while(it != NULL) {
+                mempage* next = it->next;
+                free(it);
+                it = next;
             }
 
             break;
@@ -126,7 +132,7 @@ static int do_trace(pid_t child)
 
     trace_writer_save(&stream);
 
-    printf("Collected %llu branches and %llu maps\n", stream.edge_count,
+    printf("Collected %lu branches and %lu maps\n", stream.edge_count,
             stream.map_count);
 
     return 0;

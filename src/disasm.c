@@ -199,7 +199,7 @@ ip_update disasm_next_branch(disasm* self, uint64_t ip)
             int skip_size = is_cet(isnbuf);
 
             if(skip_size == -1) {
-                fprintf(stderr, "Invalid instruction 0x%llx ", ip);
+                fprintf(stderr, "Invalid instruction 0x%lx ", ip);
 
                 for(int i = 0; i < 16; i++) {
                     fprintf(stderr, "%02x ", isnbuf[i]);
