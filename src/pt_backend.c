@@ -15,6 +15,7 @@
 #include "perf_file.h"
 #include "disasm.h"
 #include "utils.h"
+#include "trace_writer.h"
 
 // Section about traced mappings and associated helper functions
 typedef struct mapped_page_s {
@@ -165,6 +166,7 @@ static int do_trace(char* full_path) {
                 it->start, it->filename, it->size, it->offset);
     }
 
+    // pt init
     struct pt_block_decoder *decoder;
     struct pt_config config;
 
@@ -184,9 +186,24 @@ static int do_trace(char* full_path) {
     pt_blk_set_image(decoder, image);
     pt_blk_sync_forward(decoder);
 
+    // trace writer init
+    trace_writer stream;
+    trace_writer_init(&stream);
+
+    if(trace_writer_begin(&stream, "out.trace") < 0) {
+        perror("trace_writer");
+        // TODO: free memory before exit
+        return -1;
+    }
+
     int exit_status = 0;
     int status = 0;
     int emptyblock_count = 0;
+
+    // Init tracing interface
+    ip_update next_jump = {0};
+
+    next_jump.type = INS_INVALID;
 
     for(;;) {
         struct pt_block block;
@@ -239,11 +256,44 @@ static int do_trace(char* full_path) {
             }
         } else {
             if(mpp_inrange(traced_pages, block.ip)) {
-                printf("0x%lx\n", block.ip);
+                ip_update br = disasm_next_branch(disas, block.ip);
+
+                if(next_jump.type == INS_INVALID) {
+                    next_jump = br;
+                } else if(next_jump.type == INS_JCC) {
+                    if(block.ip == next_jump.target_ok) {
+                        trace_writer_addedge(&stream, next_jump.address,
+                                next_jump.target_ok);
+                    } else if(block.ip == next_jump.target_fail) {
+                        trace_writer_addedge(&stream, next_jump.address,
+                                next_jump.target_fail);
+                    }
+                } else {
+                    // If we have a call or a ret we reset the branch
+                    // status
+                    next_jump.type = INS_INVALID;
+                }
+
+                // We skip all direct branches until we read the next
+                // conditional
+                while(br.type == INS_JMP) {
+                    trace_writer_addedge(&stream, br.address,
+                            br.target_ok);
+                    br = disasm_next_branch(disas, br.target_ok);
+                }
+
+                next_jump = br;
             }
         }
     }
     
+    // Adding mappings
+    for(mapped_page* it = traced_pages; it != NULL; it = it->next) {
+        trace_writer_addmap(&stream, it->start, it->start + it->len);
+    }
+
+    trace_writer_save(&stream);
+
     mpp_free(traced_pages);
     pt_blk_free_decoder(decoder);
     pt_image_free(image);
