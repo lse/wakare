@@ -244,7 +244,7 @@ static int do_trace(char* full_path) {
             exit_status = -1;
             break;
         }
-        
+
         if(block.ninsn == 0) {
             emptyblock_count++;
             

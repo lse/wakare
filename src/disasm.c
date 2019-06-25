@@ -124,6 +124,93 @@ static int is_cet(unsigned char* buff)
 
 /////////// END CET workaround /////////////////
 
+
+/////////// Cache implementation ///////////////
+static branch_cache* branch_cache_init(branch_cache* c, size_t capacity)
+{
+    c->len = 0;
+    c->capacity = capacity;
+    c->head = NULL;
+    c->tail = NULL;
+
+    return c;
+}
+
+static cache_node* branch_cache_get(branch_cache* b, uint64_t address)
+{
+    cache_node* result = NULL;
+
+    for(cache_node* it = b->head; it != NULL; it = it->next) {
+        if(it->address == address) {
+            result = it;
+            break;
+        }
+    }
+
+    if(!result)
+        return result;
+
+    // WIP
+    if(result == b->head)
+        return result;
+
+    if(result == b->tail) {
+        result->prev->next = NULL; // Set elem n-1 as last
+        result->next = b->head;
+
+        b->tail = result->prev;
+        result->prev = NULL;
+        b->head = result;
+    } else {
+        result->prev->next = result->next;
+        result->next->prev = result->prev;
+        result->prev = NULL;
+        result->next = b->head;
+        b->head = result;
+    }
+
+    return result;
+}
+
+// As the API is private we suppose it is used correctly
+// Huge assumption
+static void branch_cache_add(branch_cache* b, uint64_t address, ip_update* s)
+{
+    cache_node* new_node = NULL;
+
+    // Maximum capacity, we reuse the deleted node
+    if(b->len == b->capacity) {
+        new_node = b->tail;
+        new_node->prev->next = NULL;
+        b->tail = new_node->prev;
+    } else if(b->len == 0){
+        new_node = malloc(sizeof(cache_node));
+        b->tail = new_node;
+        b->head = new_node;
+        new_node->prev = NULL;
+        new_node->next = NULL;
+    } else {
+        new_node = malloc(sizeof(cache_node));
+        new_node->prev = NULL;
+        new_node->next = b->head;
+        b->head = new_node;
+    }
+
+    new_node->address = address;
+    new_node->data = *s;
+}
+
+static void branch_cache_free(branch_cache* b)
+{
+    cache_node* it = b->head;
+
+    while(it != NULL) {
+        cache_node* next = it->next;
+        free(it);
+        it = next;
+    }
+}
+
 static size_t process_instruction(cs_insn* ins, ip_update* branch)
 {
     cs_detail* d = ins->detail;
@@ -181,10 +268,17 @@ ip_update disasm_next_branch(disasm* self, uint64_t ip)
 {
     unsigned char isnbuf[512];
     int count = -1;
-    ip_update branch = {0};
+    ip_update branch;
     cs_insn *insn;
 
     branch.type = INS_INVALID;
+
+    // Cache search
+    cache_node* cnode = branch_cache_get(&self->cache, ip);
+
+    if(cnode) {
+        return cnode->data;
+    }
 
     while(branch.type == INS_INVALID) {
         // When count equals -1 -> buffer empty / processed
@@ -233,6 +327,9 @@ ip_update disasm_next_branch(disasm* self, uint64_t ip)
         count = -1;
     }
 
+    // Add the instruction is new we add it to the cache
+    branch_cache_add(&self->cache, ip, &branch);
+
     return branch;
 }
 
@@ -241,11 +338,15 @@ disasm* disasm_new(read_fn fn)
     disasm* d = malloc(sizeof(disasm));
     d->read = fn;
 
+    // Init capstone
     if(cs_open(CS_ARCH_X86, CS_MODE_64, &d->handle) != CS_ERR_OK) {
         return NULL;
     }
 
     cs_option(d->handle, CS_OPT_DETAIL, CS_OPT_ON);
+
+    // Init cache
+    branch_cache_init(&d->cache, 64);
 
     return d;
 }
@@ -253,5 +354,6 @@ disasm* disasm_new(read_fn fn)
 void disasm_free(disasm* dis)
 {
     cs_close(&dis->handle);
+    branch_cache_free(&dis->cache);
     free(dis);
 }
