@@ -95,7 +95,7 @@ cet_instruction new_instructions[] = {
 //
 // returns the length on success and -1 if the instruction
 // is truly invalid
-static int is_cet(unsigned char* buff)
+static int is_cet(const uint8_t* buff)
 {
     cet_instruction* it = new_instructions;
 
@@ -155,17 +155,18 @@ static cache_node* branch_cache_get(branch_cache* b, uint64_t address)
         return result;
 
     if(result == b->tail) {
-        result->prev->next = NULL; // Set elem n-1 as last
-        result->next = b->head;
-
-        b->tail = result->prev;
+        result->prev->next = NULL;
         result->prev = NULL;
+        result->next = b->head;
+        b->head->prev = result;
         b->head = result;
     } else {
         result->prev->next = result->next;
         result->next->prev = result->prev;
+
         result->prev = NULL;
         result->next = b->head;
+        b->head->prev = result;
         b->head = result;
     }
 
@@ -180,20 +181,32 @@ static void branch_cache_add(branch_cache* b, uint64_t address, ip_update* s)
 
     // Maximum capacity, we reuse the deleted node
     if(b->len == b->capacity) {
+        // Get last node
         new_node = b->tail;
+
+        // Unlink last node with tail
         new_node->prev->next = NULL;
         b->tail = new_node->prev;
+        new_node->prev = NULL;
+
+        // Link old head to our new head
+        b->head->prev = new_node;
+        new_node->next = b->head;
+        b->head = new_node;
     } else if(b->len == 0){
         new_node = malloc(sizeof(cache_node));
-        b->tail = new_node;
-        b->head = new_node;
         new_node->prev = NULL;
         new_node->next = NULL;
+        b->head = new_node;
+        b->tail = new_node;
+        b->len++;
     } else {
         new_node = malloc(sizeof(cache_node));
         new_node->prev = NULL;
+        b->head->prev = new_node;
         new_node->next = b->head;
         b->head = new_node;
+        b->len++;
     }
 
     new_node->address = address;
@@ -264,8 +277,68 @@ static size_t process_instruction(cs_insn* ins, ip_update* branch)
     return ins->size;
 }
 
+static ip_update fast_next_branch(disasm* self, uint64_t ip)
+{
+    uint8_t insbuf[512];
+    ip_update branch;
+
+    branch.type = INS_INVALID;
+
+    cache_node* cnode = branch_cache_get(&self->cache, ip);
+
+    if(cnode)
+        return cnode->data;
+
+    uint64_t ipcopy = ip;
+    cs_insn* ins = cs_malloc(self->handle);
+
+    while(branch.type == INS_INVALID) {
+        // If the read is invalid
+        int len = self->read(self, ipcopy, sizeof(insbuf), insbuf);
+
+        if(len <= 0) {
+            cs_free(ins, 1);
+            return branch;
+        }
+
+        const uint8_t* code_ptr = (uint8_t*)insbuf;
+        size_t code_len = (size_t)len;
+
+        while(cs_disasm_iter(self->handle, &code_ptr, &code_len, &ipcopy, ins)) {
+            process_instruction(ins, &branch);
+
+            if(branch.type != INS_INVALID)
+                break;
+        }
+
+        if(branch.type != INS_INVALID)
+            break;
+
+        if(cs_errno(self->handle) != CS_ERR_MEM) {
+            // If we didn't reach the end of our buffer it means that
+            // we encountered an invalid instruction
+            int skip_len = is_cet(code_ptr);
+
+            if(skip_len < 0) {
+                cs_free(ins, 1);
+                return branch;
+            }
+
+            ipcopy += skip_len;
+        }
+    }
+
+    branch_cache_add(&self->cache, ip, &branch);
+    cs_free(ins, 1);
+
+    return branch;
+}
+
 ip_update disasm_next_branch(disasm* self, uint64_t ip)
 {
+#if 1
+    return fast_next_branch(self, ip);
+#else
     unsigned char isnbuf[512];
     int count = -1;
     ip_update branch;
@@ -331,6 +404,7 @@ ip_update disasm_next_branch(disasm* self, uint64_t ip)
     branch_cache_add(&self->cache, ip, &branch);
 
     return branch;
+#endif
 }
 
 disasm* disasm_new(read_fn fn)

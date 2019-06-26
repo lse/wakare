@@ -100,6 +100,36 @@ static int read_pt(disasm* self, uint64_t addr, size_t len, void* buff)
     return -1;
 }
 
+// Fallback method to continue processing the trace even when some
+// data is lost. We use the next FUP packet as a starting point.
+static uint64_t pkt_next_psb(struct pt_packet_decoder* d, uint64_t off)
+{
+    struct pt_packet pkt;
+    int status = 0;
+
+    if(pt_pkt_sync_set(d, off) < 0)
+        return 0;
+
+    while(status >= 0) {
+        status = pt_pkt_next(d, &pkt, sizeof(struct pt_packet));
+
+        if(status < 0)
+            break;
+
+
+        if(pkt.type == ppt_psb) {
+            uint64_t offset = 0;
+
+            if(pt_pkt_get_offset(d, &offset) < 0)
+                return 0;
+
+            return offset;
+        }
+    }
+
+    return 0;
+}
+
 static int do_trace(char* full_path) {
     pt_file* ptfile = perf_data_parse(PT_TEMP_FILE);
 
@@ -168,6 +198,7 @@ static int do_trace(char* full_path) {
 
     // pt init
     struct pt_block_decoder *decoder;
+    struct pt_packet_decoder *pkt_decoder;
     struct pt_config config;
 
     memset(&config, 0, sizeof(struct pt_config));
@@ -176,6 +207,7 @@ static int do_trace(char* full_path) {
     config.end = (uint8_t*)ptfile->data + ptfile->size;
 
     decoder = pt_blk_alloc_decoder(&config);
+    pkt_decoder = pt_pkt_alloc_decoder(&config);
 
     if(!decoder) {
         fprintf(stderr, "Error initializing pt library\n");
@@ -199,6 +231,7 @@ static int do_trace(char* full_path) {
     int exit_status = 0;
     int status = 0;
     int emptyblock_count = 0;
+    uint64_t trace_offset = 0;
 
     // Init tracing interface
     ip_update next_jump = {0};
@@ -207,20 +240,41 @@ static int do_trace(char* full_path) {
 
     for(;;) {
         struct pt_block block;
-
+        
         status = pt_blk_next(decoder, &block, sizeof(struct pt_block));
 
+        if(status == -pte_nomap) {
+            printf("Warning: Requested memory not mapped, skipping to next PSB\n");
+            status = pt_blk_sync_forward(decoder);
+            continue;
+        }
+        
         // We reached the end of the stream
         if(status == -pte_eos)
             break;
 
+        pt_blk_get_offset(decoder, &trace_offset);
+
         // Generic exit.
         if(status < 0 ) {
-            uint64_t offset = 0;
-            pt_blk_get_offset(decoder, &offset);
-
             fprintf(stderr, "Error %i while decoding packet at offset 0x%lx \n",
-                    status, offset);
+                    status, trace_offset);
+
+            if(status == -pte_nomap)
+                printf("nomap\n");
+
+            if(status == -pte_internal)
+                printf("internal error\n");
+
+            fprintf(stderr, "Packet data: ");
+            uint8_t* data = (uint8_t*)ptfile->data;
+
+            for(int i = 0; i < 16; i++) {
+                fprintf(stderr, "%02x ", data[trace_offset + i]);
+            }
+
+            fprintf(stderr, "\n");
+
             exit_status = -1;
             break;
         }
@@ -237,6 +291,7 @@ static int do_trace(char* full_path) {
                 evt_status = pt_blk_event(decoder, &evt, 
                         sizeof(struct pt_event));
             }
+
         }
 
         if(status < 0) {
@@ -247,12 +302,26 @@ static int do_trace(char* full_path) {
 
         if(block.ninsn == 0) {
             emptyblock_count++;
-            
+
             // On some executable there are a lot of empty blocks at the end
             // We can early return instead of being stuck in an infinite loop
             if(emptyblock_count > 100) {
-                fprintf(stderr, "Warning: encountered too many empty blocks\n");
-                break;
+                fprintf(stderr, "Warning: trace out of sync, skipping to next PSB\n");
+                uint64_t off = pkt_next_psb(pkt_decoder, trace_offset);
+
+                if(off == 0) {
+                    printf("zero offset\n");
+                    return -1;
+                }
+
+                status = pt_blk_sync_forward(decoder);
+
+                if(status == -pte_nosync) {
+                    printf("bad\n");
+                    return -1;
+                }
+
+                emptyblock_count = 0;
             }
         } else {
             if(mpp_inrange(traced_pages, block.ip)) {
@@ -296,6 +365,7 @@ static int do_trace(char* full_path) {
 
     mpp_free(traced_pages);
     pt_blk_free_decoder(decoder);
+    pt_pkt_free_decoder(pkt_decoder);
     pt_image_free(image);
     pt_file_free(ptfile);
 

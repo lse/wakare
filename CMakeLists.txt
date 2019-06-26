@@ -4,7 +4,7 @@ project(tracing)
 find_library(LIB_IPT ipt)
 find_library(LIB_CAPSTONE capstone)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Wall")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Wall -fsanitize=address")
 
 set(SOURCES
     src/main.c
