@@ -311,7 +311,8 @@ static int do_trace(char* full_path) {
 
                 if(off == 0) {
                     printf("zero offset\n");
-                    return -1;
+                    exit_status = -1;
+                    break;
                 }
 
                 status = pt_blk_sync_forward(decoder);

@@ -14,6 +14,7 @@ static int parse_map_line(char* line, mempage* result)
     if(cnt != 3)
         return 0;
 
+    result->perms = 0;
     result->perms |= (buff[0] == 'r') ? PERM_R : 0;
     result->perms |= (buff[1] == 'w') ? PERM_W : 0;
     result->perms |= (buff[2] == 'x') ? PERM_X : 0;
