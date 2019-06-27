@@ -240,7 +240,7 @@ static int do_trace(char* full_path) {
 
     for(;;) {
         struct pt_block block;
-        
+
         status = pt_blk_next(decoder, &block, sizeof(struct pt_block));
 
         if(status == -pte_nomap) {
@@ -248,7 +248,7 @@ static int do_trace(char* full_path) {
             status = pt_blk_sync_forward(decoder);
             continue;
         }
-        
+
         // We reached the end of the stream
         if(status == -pte_eos)
             break;

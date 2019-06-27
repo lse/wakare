@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.0)
 project(tracing)
 
+option(IPCACHING "Enables branch ip caching" ON)
+
+if(IPCACHING)
+    add_compile_definitions(IPCACHING=1)
+endif()
+
 find_library(LIB_IPT ipt)
 find_library(LIB_CAPSTONE capstone)
 

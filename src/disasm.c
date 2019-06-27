@@ -155,10 +155,14 @@ static cache_node* branch_cache_get(branch_cache* b, uint64_t address)
         return result;
 
     if(result == b->tail) {
+        result = b->tail;
+
         result->prev->next = NULL;
+        b->tail = result->prev;
         result->prev = NULL;
-        result->next = b->head;
+
         b->head->prev = result;
+        result->next = b->head;
         b->head = result;
     } else {
         result->prev->next = result->next;
@@ -277,17 +281,19 @@ static size_t process_instruction(cs_insn* ins, ip_update* branch)
     return ins->size;
 }
 
-static ip_update fast_next_branch(disasm* self, uint64_t ip)
+ip_update disasm_next_branch(disasm* self, uint64_t ip)
 {
     uint8_t insbuf[512];
     ip_update branch;
 
     branch.type = INS_INVALID;
-
+    
+#ifdef IPCACHING
     cache_node* cnode = branch_cache_get(&self->cache, ip);
 
     if(cnode)
         return cnode->data;
+#endif
 
     uint64_t ipcopy = ip;
     cs_insn* ins = cs_malloc(self->handle);
@@ -328,83 +334,12 @@ static ip_update fast_next_branch(disasm* self, uint64_t ip)
         }
     }
 
+#ifdef IPCACHING
     branch_cache_add(&self->cache, ip, &branch);
+#endif
     cs_free(ins, 1);
 
     return branch;
-}
-
-ip_update disasm_next_branch(disasm* self, uint64_t ip)
-{
-#if 1
-    return fast_next_branch(self, ip);
-#else
-    unsigned char isnbuf[512];
-    int count = -1;
-    ip_update branch;
-    cs_insn *insn;
-
-    branch.type = INS_INVALID;
-
-    // Cache search
-    cache_node* cnode = branch_cache_get(&self->cache, ip);
-
-    if(cnode) {
-        return cnode->data;
-    }
-
-    while(branch.type == INS_INVALID) {
-        // When count equals -1 -> buffer empty / processed
-        if(count == -1) {
-            self->read(self, ip, sizeof(isnbuf), isnbuf);
-            count = cs_disasm(self->handle, isnbuf, sizeof(isnbuf), ip, 0, &insn);
-        }
-        
-        // There was an error. Check if it is an intel CET instruction
-        // (INSSP, RDSSP, ...)
-        if(count == 0) {
-            int skip_size = is_cet(isnbuf);
-
-            if(skip_size == -1) {
-                fprintf(stderr, "Invalid instruction 0x%lx ", ip);
-
-                for(int i = 0; i < 16; i++) {
-                    fprintf(stderr, "%02x ", isnbuf[i]);
-                }
-
-                fprintf(stderr, "\n");
-                
-                // As the current type is INS_INVALID
-                // the error will propagate to the call site.
-                return branch;
-            }
-
-            // We skip the cet instruction
-            ip += skip_size;
-        }
-
-        for(int i = 0; i < count; i++) {
-            ip += process_instruction(&insn[i], &branch);
-
-            if(branch.type != INS_INVALID)
-                break;
-        }
-        
-        // Freeing the instructions
-        if(count > 0) {
-            cs_free(insn, count);
-        }
-
-        // As we read all available instructions in the buffer we can
-        // set the count to -1.
-        count = -1;
-    }
-
-    // Add the instruction is new we add it to the cache
-    branch_cache_add(&self->cache, ip, &branch);
-
-    return branch;
-#endif
 }
 
 disasm* disasm_new(read_fn fn)
