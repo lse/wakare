@@ -36,10 +36,10 @@ static mapped_page* mpp_add_section(mapped_page* pages, char* filename,
     void* mem = mmap(NULL, align_pagesize(len), PROT_READ | PROT_WRITE,
             MAP_PRIVATE, fd, off);
 
+    close(fd);
+    
     if(mem == NULL)
         return NULL;
-
-    close(fd);
 
     mapped_page* page = malloc(sizeof(mapped_page));
     page->start = vaddr;
@@ -130,23 +130,157 @@ static uint64_t pkt_next_psb(struct pt_packet_decoder* d, uint64_t off)
     return 0;
 }
 
-static int do_trace(char* full_path) {
-    pt_file* ptfile = perf_data_parse(PT_TEMP_FILE);
+static int setup_pt(struct pt_block_decoder** blk_dec, 
+        struct pt_packet_decoder** pkt_dec, pt_file* trace)
+{
+    struct pt_config config;
 
-    if(!ptfile)
-        return -1;
+    pt_config_init(&config);
+    config.begin = (uint8_t*)trace->data;
+    config.end = (uint8_t*)trace->data + trace->size;
 
-    if(ptfile->size == -1 || ptfile->data == NULL) {
-        fprintf(stderr, "File didn't contain pt data\n");
-        pt_file_free(ptfile);
+    *blk_dec = pt_blk_alloc_decoder(&config);
+    *pkt_dec = pt_pkt_alloc_decoder(&config);
+
+    if(!blk_dec) {
+        free(*blk_dec);
         return -1;
     }
+
+    if(!pkt_dec) {
+        free(*pkt_dec);
+        return -1;
+    }
+
+    struct pt_image* image = pt_image_alloc(NULL);
+
+    if(!image) {
+        fprintf(stderr, "Could not allocate trace image\n");
+        return -1;
+    }
+    
+    for(pt_mapping* it = trace->maps; it != NULL; it = it->next) {
+        int err = pt_image_add_file(image, it->filename, it->offset, it->size,
+                NULL, it->start);
+
+        if(err != 0 && strcmp(it->filename, "[vdso]") != 0)
+            goto cleanup;
+    }
+
+    if(pt_blk_set_image(*blk_dec, image) < 0)
+        goto cleanup;
+
+    if(pt_blk_sync_forward(*blk_dec) < 0)
+        goto cleanup;
+
+    return 0;
+
+cleanup:
+    free(*pkt_dec);
+    free(*blk_dec);
+    free(image);
+
+    return -1;
+}
+
+static void log_pt_err(struct pt_block_decoder* dec, enum pt_error_code err)
+{
+    // use pt_errstr
+    uint64_t offset = 0;
+    pt_blk_get_offset(dec, &offset);
+
+    fprintf(stderr, "Critical error at offset 0x%lx -> %s\n", offset,
+            pt_errstr(err));
+}
+
+static int do_trace_alt(char* exe_path, char* perf_path)
+{
+    int exit_status = 1;
+    pt_file* ptfile = perf_data_parse(perf_path);
+
+    if(!ptfile)
+        goto nofree;
+
+    mapped_page* mapped_pages = NULL;
+
+    for(pt_mapping* it = ptfile->maps; it != NULL; it = it->next) {
+        if(strcmp(exe_path, it->filename) == 0) {
+            mapped_pages = mpp_add_section(mapped_pages, it->filename,
+                    it->start, it->size, it->offset);
+        }
+    }
+
+    if(!mapped_pages) {
+        fprintf(stderr, "Could not find program mappings\n");
+        goto ptfilefree;
+    }
+
+    struct pt_block_decoder* blk_dec;
+    struct pt_packet_decoder* pkt_dec;
+
+    if(setup_pt(&blk_dec, &pkt_dec, ptfile) < 0)
+        goto ptfilefree;
+
+    trace_writer stream;
+    trace_writer_init(&stream);
+
+    if(trace_writer_begin(&stream, "out.trace") < 0) {
+        fprintf(stderr, "Error while opening output file\n");
+        goto decoderfree;
+    }
+
+    int status = 0;
+    uint64_t trace_offset = 0;
+    ip_update next_jump = {0};
+    struct pt_block block;
+
+    next_jump.type = INS_INVALID;
+
+    // TODO: Add function doing all the block querying to simplify the inner
+    //       loop.
+
+    while(status != -pte_eos) {
+        status = pt_blk_next(blk_dec, &block, sizeof(struct pt_block));
+
+        if(status == -pte_eos)
+            break;
+
+        pt_blk_get_offset(blk_dec, &trace_offset);
+
+        if(status == -pte_nomap) {
+            printf("Requested memory not mapped, skipping to next PSB\n");
+            goto decoderfree;
+        }
+
+        if(status < 0) {
+            log_pt_err(blk_dec, -status);
+            goto decoderfree;
+        }
+    }
+
+decoderfree:
+    pt_image_free(pt_blk_get_image(blk_dec));
+    pt_blk_free_decoder(blk_dec);
+    pt_pkt_free_decoder(pkt_dec);
+ptfilefree:
+    free(ptfile);
+
+nofree:
+    return exit_status;
+}
+
+static int do_trace(char* full_path) {
+    pt_file* ptfile = perf_data_parse(full_path);
+    int exit_status = -1;
+
+    if(!ptfile)
+        goto nofree;
 
     pt_mapping* target = NULL;
     
     // We try to find our executable mappings
     for(pt_mapping* it = ptfile->maps; it != NULL; it = it->next) {
-        if(strcmp(full_path, it->filename) == 0)
+        if(strcmp("/bin/ls", it->filename) == 0)
             target = it;
     }
 
@@ -228,7 +362,6 @@ static int do_trace(char* full_path) {
         return -1;
     }
 
-    int exit_status = 0;
     int status = 0;
     int emptyblock_count = 0;
     uint64_t trace_offset = 0;
@@ -368,37 +501,19 @@ static int do_trace(char* full_path) {
     pt_blk_free_decoder(decoder);
     pt_pkt_free_decoder(pkt_decoder);
     pt_image_free(image);
+
+freeptfile:
     pt_file_free(ptfile);
+nofree:
 
     return exit_status;
 }
 
 int do_pt_trace(char** argv, char** envp)
 {
-    // Check if pt is supported (/sys/devices/intel_pt)
-    if(access("/sys/devices/intel_pt", F_OK) != 0) {
-        fprintf(stderr, "This device does not support intel_pt\n");
-        return -1;
-    }
-
-    // Check if perf is installed
-    if(access("/usr/bin/perf", F_OK) != 0) {
-        fprintf(stderr, "Please install perf at /usr/bin/perf\n");
-        return -1;
-    }
-
-    // Check if the executable is available
-    if(access(argv[0], F_OK) != 0) {
-        fprintf(stderr, "Could not find executable '%s'\n", argv[0]);
-        return -1;
-    }
-
-    char* full_path = malloc(PATH_MAX);
-
-    if(!realpath(argv[0], full_path)) {
-        fprintf(stderr, "Could not get full path of '%s'\n", argv[0]);
-        free(full_path);
-        return -1;
+    if(access(argv[0], F_OK | R_OK) != 0) {
+        fprintf(stderr, "Could not access file '%s'\n", argv[0]);
+        return 1;
     }
 
     // Initializing the disassembler
@@ -406,77 +521,11 @@ int do_pt_trace(char** argv, char** envp)
 
     if(!disas) {
         fprintf(stderr, "Could not init capstone\n");
-        return -1;
-    }
-    
-    // We disable timing information (tsc, mtc) because we don't need it
-    // and we also disable return compression (noretcomp) to get a trace 
-    // that is easier to process (no need to keep a virtual return stack)
-    char* perf_cmd[] = {
-        "/usr/bin/perf", "record", "-e", 
-        "intel_pt/tsc=0,mtc=0,noretcomp=1/u",
-        "-o", PT_TEMP_FILE
-    };
-    
-    int perf_cmd_len = sizeof(perf_cmd) / sizeof(char*);
-    int usr_cmd_len = 0;
-
-    for(int i = 0; argv[i] != NULL; i++)
-        usr_cmd_len++;
-
-    int final_cmd_len = (usr_cmd_len + 1 + perf_cmd_len);
-    char** combined_argv = malloc(sizeof(char*) * final_cmd_len);
-    
-    // Combining argvs
-    for(int i = 0; i < (final_cmd_len - 1); i++) {
-        if(i < perf_cmd_len) {
-            combined_argv[i] = perf_cmd[i];
-        } else {
-            combined_argv[i] = argv[i - perf_cmd_len];
-        }
+        return 1;
     }
 
-    combined_argv[final_cmd_len - 1] = 0;
+    int trace_status = do_trace(argv[0]);
 
-    // Now executing perf command
-    pid_t child = fork();
-
-    if(child == -1) {
-        fprintf(stderr, "Fork failed\n");
-        free(full_path);
-        return -1;
-    }
-
-    if(child == 0) {
-        execve(combined_argv[0], combined_argv, envp);
-        fprintf(stderr, "There was an error executing perf\n");
-        perror("execve");
-        exit(-1);
-    }
-    
-    // Now waiting for process to finish
-    int status = 0;
-
-    while(1) {
-        pid_t id = waitpid(child, &status, 0);
-
-        if(id < 0) {
-            fprintf(stderr, "watipid() failed\n");
-            perror("waitpid");
-
-            free(full_path);
-            return -1;
-        }
-        
-        if(WIFEXITED(status) || WIFSIGNALED(status) ) {
-            break;
-        }
-    }
-
-    int trace_status = do_trace(full_path);
-
-    free(full_path);
-    free(combined_argv);
     disasm_free(disas);
 
     return trace_status;

@@ -11,6 +11,7 @@ find_library(LIB_IPT ipt)
 find_library(LIB_CAPSTONE capstone)
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -g -Wall -fsanitize=address")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native")
 
 set(SOURCES
     src/main.c

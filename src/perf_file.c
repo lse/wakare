@@ -161,5 +161,11 @@ pt_file* perf_data_parse(char* path)
     free(bs);
     munmap(file_ptr, aligned_size);
 
+    if(ptfile->size == 0) {
+        fprintf(stderr, "File did not contain any pt data\n");
+        pt_file_free(ptfile);
+        return NULL;
+    }
+
     return ptfile;
 }

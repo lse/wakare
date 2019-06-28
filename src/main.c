@@ -4,10 +4,10 @@
 #include "ptrace_backend.h"
 #include "pt_backend.h"
 
-char* usage = "usage: %s [mode] prog args...\n\n" \
-               "mode:\n" \
-               "  ptrace  Uses the ptrace backend\n" \
-               "  pt      Uses the intel pt backend\n";
+char* usage = "usage: %s [mode] args...\n\n"\
+               "mode\n"\
+               "  ptrace <command line>    Gather data through ptrace tracing\n"\
+               "  pt     <perf.data file>  Parses pt traces from perf data file\n";
 
 int main(int argc, char** argv, char** envp)
 {
@@ -24,7 +24,7 @@ int main(int argc, char** argv, char** envp)
         printf("Invalid backend '%s'\n", argv[1]);
         printf("Valid backends are 'ptrace' and 'pt'\n");
 
-        return -1;
+        return 1;
     }
 
     return 0;
