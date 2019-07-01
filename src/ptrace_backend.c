@@ -19,7 +19,8 @@ static disasm* disas;
 static pid_t child;
 
 // We only read into long aligned buffers because it is easier
-static void ptrace_read_mem(pid_t child, unsigned long addr, void* buff, unsigned len)
+static void ptrace_read_mem(pid_t child, unsigned long addr, void* buff,
+        unsigned len)
 {
     long* wbuff = (long*)buff;
 

@@ -199,8 +199,6 @@ static int do_trace(char* perf_path, char* exe_path)
 
     while(status != -pte_eos) {
         status = pt_blk_next(blk_dec, &block, sizeof(struct pt_block));
-        //printf("status: %i\n", status);
-        //log_pt_err(blk_dec, -status);
 
         if(status == -pte_eos) {
             break;
