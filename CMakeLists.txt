@@ -7,6 +7,8 @@ if(IPCACHING)
     add_compile_definitions(IPCACHING=1)
 endif()
 
+include(FindProtobuf)
+
 find_library(LIB_IPT ipt)
 find_library(LIB_CAPSTONE capstone)
 find_library(LIB_GFLAGS gflags)
@@ -17,7 +19,7 @@ set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS} -ggdb -fsanitize=address")
 set(CMAKE_CXX_FLAGS_RELEASE "-03 -march=native")
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 
 set(TRACER_SOURCES
     src/tracer/main.c
@@ -62,4 +64,4 @@ target_link_libraries(converter
     "${LIB_IPT}"
     "${LIB_CAPSTONE}"
     "${LIB_GFLAGS}"
-    "${PROTOBUF_LIBRARIES}")
+    "${PROTOBUF_LIBRARY}")

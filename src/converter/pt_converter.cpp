@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <fstream>
 #include <intel-pt.h>
 #include "converter/pt_converter.hh"
 #include "converter/disassembler.hh"
@@ -137,6 +138,27 @@ int pt_process(std::string perf_path, std::string binary_path,
     if(setup_pt(&blk_dec, perf_file) < 0)
         return 1;
 
+    // Setup the output file
+    std::ofstream out_stream(output_path, std::ofstream::out);
+
+    if(!out_stream) {
+        std::cerr << "Could not open file: " << output_path << "\n";
+        return 1;
+    }
+
+    // Setup protobuf
+    trace::Trace out_trace;
+
+    for(auto& map : perf_file.maps) {
+        if(map.filename != "[vdso]") {
+            trace::MappingEvent* evt = out_trace.add_mappings();
+            evt->set_start(map.start);
+            evt->set_size(map.size);
+            evt->set_offset(map.offset);
+            evt->set_filename(map.filename);
+        }
+    }
+
     // Begin processing the trace
     int status = 0;
     CodeBranch next_jump;
@@ -194,21 +216,29 @@ int pt_process(std::string perf_path, std::string binary_path,
         // Now handling jumps
         if(disas.is_mapped(block.ip)) {
             CodeBranch br = disas.get_next_branch(block.ip);
+            trace::BranchEvent* evt;
 
             if(next_jump.type == CodeBranchType::Invalid) {
                 next_jump = br;
             } else if(next_jump.type == CodeBranchType::CondJump) {
                 if(block.ip == next_jump.ok) {
-
+                    evt = out_trace.add_branches();
+                    evt->set_source(next_jump.address);
+                    evt->set_destination(next_jump.ok);
                 } else if(block.ip == next_jump.fail) {
-                    // TODO: Trace
+                    evt = out_trace.add_branches();
+                    evt->set_source(next_jump.address);
+                    evt->set_destination(next_jump.fail);
                 }
             } else {
                 next_jump.type = CodeBranchType::Invalid;
             }
 
             while(br.type == CodeBranchType::Jump) {
-                // TODO: Trace
+                evt = out_trace.add_branches();
+                evt->set_source(br.address);
+                evt->set_destination(br.ok);
+
                 br = disas.get_next_branch(br.ok);
             }
 
@@ -216,6 +246,13 @@ int pt_process(std::string perf_path, std::string binary_path,
         }
     }
 
+    // Now we write the trace
+    out_trace.SerializeToOstream(&out_stream);
+    out_stream.close();
+
+    google::protobuf::ShutdownProtobufLibrary();
+    
+    // pt cleanup
     pt_image_free(pt_blk_get_image(blk_dec));
     pt_blk_free_decoder(blk_dec);
 

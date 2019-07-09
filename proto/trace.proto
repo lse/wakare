@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tracing;
+package trace;
 
 message BranchEvent {
     uint64 source = 1;
