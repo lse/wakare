@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "trace.h"
+#include "tracer/trace.h"
 
 // TODO: Add more error handling
 

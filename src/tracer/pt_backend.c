@@ -11,11 +11,11 @@
 #include <sys/mman.h>
 #include <intel-pt.h>
 
-#include "pt_backend.h"
-#include "perf_file.h"
-#include "disasm.h"
-#include "utils.h"
-#include "trace.h"
+#include "tracer/pt_backend.h"
+#include "tracer/perf_file.h"
+#include "tracer/disasm.h"
+#include "tracer/utils.h"
+#include "tracer/trace.h"
 
 // Section about traced mappings and associated helper functions
 typedef struct mapped_page_s {

@@ -9,9 +9,15 @@ endif()
 
 find_library(LIB_IPT ipt)
 find_library(LIB_CAPSTONE capstone)
+find_library(LIB_GFLAGS gflags)
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -g -Wall -fsanitize=address")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native")
+
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS} -ggdb -fsanitize=address")
+set(CMAKE_CXX_FLAGS_RELEASE "-03 -march=native")
+
+set(CMAKE_CXX_STANDARD 14)
 
 set(TRACER_SOURCES
     src/tracer/main.c
@@ -23,7 +29,10 @@ set(TRACER_SOURCES
     src/tracer/utils.c)
 
 set(CONVERTER_SOURCES
-    src/converter/main.cpp)
+    src/converter/main.cpp
+    src/converter/perf_file.cpp
+    src/converter/pt_converter.cpp
+    src/converter/disassembler.cpp)
 
 include_directories(include)
 
@@ -33,3 +42,8 @@ add_executable(converter ${CONVERTER_SOURCES})
 target_link_libraries(tracer
     "${LIB_IPT}"
     "${LIB_CAPSTONE}")
+
+target_link_libraries(converter
+    "${LIB_IPT}"
+    "${LIB_CAPSTONE}"
+    "${LIB_GFLAGS}")

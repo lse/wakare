@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <capstone/capstone.h>
 
-#include "disasm.h"
+#include "tracer/disasm.h"
 
 //////////////// CET Instructions workaround /////////////////
 typedef struct cet_instruction_s {

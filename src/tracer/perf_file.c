@@ -8,8 +8,8 @@
 #include <sys/mman.h>
 #include <linux/perf_event.h>
 
-#include "perf_file.h"
-#include "utils.h"
+#include "tracer/perf_file.h"
+#include "tracer/utils.h"
 
 #define OFFSETPTR(ptr, off) (void*)(((char*)ptr) + off)
 

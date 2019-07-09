@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "ptrace_backend.h"
-#include "pt_backend.h"
+#include "tracer/ptrace_backend.h"
+#include "tracer/pt_backend.h"
 
 char* usage = "usage: %s [mode] args...\n\n"\
                "mode\n"\

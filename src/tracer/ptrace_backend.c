@@ -9,11 +9,11 @@
 #include <sys/user.h>
 #include <sys/syscall.h>
 
-#include "ptrace_backend.h"
-#include "disasm.h"
-#include "types.h"
-#include "utils.h"
-#include "trace.h"
+#include "tracer/ptrace_backend.h"
+#include "tracer/disasm.h"
+#include "tracer/types.h"
+#include "tracer/utils.h"
+#include "tracer/trace.h"
 
 static disasm* disas;
 static pid_t child;
