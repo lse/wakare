@@ -15,7 +15,7 @@
 #include "perf_file.h"
 #include "disasm.h"
 #include "utils.h"
-#include "trace_writer.h"
+#include "trace.h"
 
 // Section about traced mappings and associated helper functions
 typedef struct mapped_page_s {
@@ -172,6 +172,7 @@ static int do_trace(char* perf_path, char* exe_path)
         }
     }
 
+
     if(!traced_pages) {
         fprintf(stderr, "Could not find program mappings\n");
         goto ptfilefree;
@@ -188,6 +189,13 @@ static int do_trace(char* perf_path, char* exe_path)
     if(trace_writer_begin(&stream, "out.trace") < 0) {
         fprintf(stderr, "Error while opening output file\n");
         goto decoderfree;
+    }
+
+    for(pt_mapping* it = ptfile->maps; it != NULL; it = it->next) {
+        if(strcmp(it->filename, "[vdso]") != 0) {
+            trace_write_mmap(&stream, it->start, it->size, it->offset,
+                    it->filename);
+        }
     }
 
     int status = 0;
@@ -247,10 +255,10 @@ static int do_trace(char* perf_path, char* exe_path)
                 next_jump = br;
             } else if(next_jump.type == INS_JCC) {
                 if(block.ip == next_jump.target_ok) {
-                    trace_writer_addedge(&stream, next_jump.address,
+                    trace_write_jump(&stream, next_jump.address,
                             next_jump.target_ok);
                 } else if(block.ip == next_jump.target_fail) {
-                    trace_writer_addedge(&stream, next_jump.address,
+                    trace_write_jump(&stream, next_jump.address,
                             next_jump.target_fail);
                 }
             } else {
@@ -262,7 +270,7 @@ static int do_trace(char* perf_path, char* exe_path)
             // We skip all direct branches until we read the next
             // conditional
             while(br.type == INS_JMP) {
-                trace_writer_addedge(&stream, br.address,
+                trace_write_jump(&stream, br.address,
                         br.target_ok);
                 br = disasm_next_branch(disas, br.target_ok);
             }
@@ -272,12 +280,7 @@ static int do_trace(char* perf_path, char* exe_path)
     }
 
     exit_status = 0;
-
-    for(mapped_page* it = traced_pages; it != NULL; it = it->next) {
-        trace_writer_addmap(&stream, it->start, it->start + it->len);
-    }
-
-    trace_writer_save(&stream);
+    //trace_writer_save(&stream);
 
 decoderfree:
     pt_image_free(pt_blk_get_image(blk_dec));

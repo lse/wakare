@@ -13,7 +13,7 @@
 #include "disasm.h"
 #include "types.h"
 #include "utils.h"
-#include "trace_writer.h"
+#include "trace.h"
 
 static disasm* disas;
 static pid_t child;
@@ -73,7 +73,7 @@ static int do_trace(pid_t child)
 
             for(mempage* it = page_list; it != NULL; it = it->next) {
                 if(it->perms & PERM_X) {
-                    trace_writer_addmap(&stream, it->start, it->end);
+                    //trace_writer_addmap(&stream, it->start, it->end);
                 }
             }
 
@@ -108,17 +108,17 @@ static int do_trace(pid_t child)
             if(next_jump.type == INS_JCC) {
                 if(regs.rip == next_jump.target_ok) {
                     // Branch taken
-                    trace_writer_addedge(&stream, next_jump.address,
+                    trace_write_jump(&stream, next_jump.address,
                             next_jump.target_ok);
                 } else {
                     // Branch not taken
-                    trace_writer_addedge(&stream, next_jump.address,
+                    trace_write_jump(&stream, next_jump.address,
                             next_jump.target_fail);
                 }
             }
 
             if(next_jump.type == INS_JMP) {
-                trace_writer_addedge(&stream, next_jump.address,
+                trace_write_jump(&stream, next_jump.address,
                         next_jump.target_ok);
             }
         }
@@ -131,7 +131,7 @@ static int do_trace(pid_t child)
         }
     }
 
-    trace_writer_save(&stream);
+    //trace_writer_save(&stream);
 
     printf("Collected %lu branches and %lu maps\n", stream.edge_count,
             stream.map_count);

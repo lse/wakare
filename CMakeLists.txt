@@ -13,18 +13,23 @@ find_library(LIB_CAPSTONE capstone)
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -g -Wall -fsanitize=address")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native")
 
-set(SOURCES
-    src/main.c
-    src/disasm.c
-    src/ptrace_backend.c
-    src/pt_backend.c
-    src/trace_writer.c
-    src/perf_file.c
-    src/utils.c)
+set(TRACER_SOURCES
+    src/tracer/main.c
+    src/tracer/disasm.c
+    src/tracer/ptrace_backend.c
+    src/tracer/pt_backend.c
+    src/tracer/trace_writer.c
+    src/tracer/perf_file.c
+    src/tracer/utils.c)
+
+set(CONVERTER_SOURCES
+    src/converter/main.cpp)
 
 include_directories(include)
 
-add_executable(tracer ${SOURCES})
+add_executable(tracer ${TRACER_SOURCES})
+add_executable(converter ${CONVERTER_SOURCES})
+
 target_link_libraries(tracer
     "${LIB_IPT}"
     "${LIB_CAPSTONE}")
