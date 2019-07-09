@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package tracing;
+
+message BranchEvent {
+    uint64 source = 1;
+    uint64 destination = 2;
+}
+
+message MappingEvent {
+    uint64 start = 1;
+    uint64 size = 2;
+    uint64 offset = 3;
+    string filename = 4;
+}
+
+message Trace {
+    repeated MappingEvent mappings = 1;
+    repeated BranchEvent branches = 2;
+}

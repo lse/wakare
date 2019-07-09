@@ -34,16 +34,32 @@ set(CONVERTER_SOURCES
     src/converter/pt_converter.cpp
     src/converter/disassembler.cpp)
 
-include_directories(include)
+add_subdirectory(proto)
 
-add_executable(tracer ${TRACER_SOURCES})
-add_executable(converter ${CONVERTER_SOURCES})
+add_executable(tracer 
+    ${TRACER_SOURCES})
+
+add_executable(converter 
+    ${CONVERTER_SOURCES}
+    ${PROTO_SRCS}
+    ${PROTO_HDRS})
+
+target_include_directories(tracer
+    PUBLIC
+    include)
+
+target_include_directories(converter
+    PUBLIC
+    include
+    proto)
 
 target_link_libraries(tracer
     "${LIB_IPT}"
     "${LIB_CAPSTONE}")
 
 target_link_libraries(converter
+    proto
     "${LIB_IPT}"
     "${LIB_CAPSTONE}"
-    "${LIB_GFLAGS}")
+    "${LIB_GFLAGS}"
+    "${PROTOBUF_LIBRARIES}")

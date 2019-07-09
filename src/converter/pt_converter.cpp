@@ -4,6 +4,7 @@
 #include "converter/pt_converter.hh"
 #include "converter/disassembler.hh"
 #include "converter/perf_file.hh"
+#include "trace.pb.h"
 
 static std::string get_realpath(std::string path)
 {
@@ -198,7 +199,7 @@ int pt_process(std::string perf_path, std::string binary_path,
                 next_jump = br;
             } else if(next_jump.type == CodeBranchType::CondJump) {
                 if(block.ip == next_jump.ok) {
-                    // TODO: Trace
+
                 } else if(block.ip == next_jump.fail) {
                     // TODO: Trace
                 }
