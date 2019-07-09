@@ -17,7 +17,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -g -Wall -fsanitize=address")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS} -ggdb -fsanitize=address")
-set(CMAKE_CXX_FLAGS_RELEASE "-03 -march=native")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 
 set(CMAKE_CXX_STANDARD 11)
 
