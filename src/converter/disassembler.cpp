@@ -265,7 +265,7 @@ CodeBranch Disassembler::get_next_branch(size_t ip)
 
     while(branch.type == CodeBranchType::Invalid) {
         // Read error if we read nothing
-        size_t len = this->mem_read(insbuf, ip, sizeof(insbuf));
+        size_t len = this->mem_read(insbuf, ipcopy, sizeof(insbuf));
 
         if(len == 0)
             break;

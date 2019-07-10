@@ -175,7 +175,7 @@ int pt_process(std::string perf_path, std::string binary_path,
             break;
         } else if(status == -pte_nosync 
                 || status == -pte_nomap
-                || emptycount > 100) {
+                || emptycount > 10) {
             std::cerr << "Warning: Trace out of skipping, seeking to next PSB\n";
             status = pt_blk_sync_forward(blk_dec);
             emptycount = 0;
@@ -195,6 +195,10 @@ int pt_process(std::string perf_path, std::string binary_path,
             log_pt_err(blk_dec, (pt_error_code)-status);
             break;
         }
+
+        uint64_t off;
+
+        pt_blk_get_offset(blk_dec, &off);
 
         // Handling event skipping
         if(status & pts_event_pending) {
