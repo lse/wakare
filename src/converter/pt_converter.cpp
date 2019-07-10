@@ -196,10 +196,6 @@ int pt_process(std::string perf_path, std::string binary_path,
             break;
         }
 
-        uint64_t off;
-
-        pt_blk_get_offset(blk_dec, &off);
-
         // Handling event skipping
         if(status & pts_event_pending) {
             struct pt_event evt;
@@ -229,11 +225,18 @@ int pt_process(std::string perf_path, std::string binary_path,
                     evt = out_trace.add_branches();
                     evt->set_source(next_jump.address);
                     evt->set_destination(next_jump.ok);
+                    evt->set_type(trace::BranchType::CONDJUMP);
                 } else if(block.ip == next_jump.fail) {
                     evt = out_trace.add_branches();
                     evt->set_source(next_jump.address);
                     evt->set_destination(next_jump.fail);
+                    evt->set_type(trace::BranchType::CONDJUMP);
                 }
+            } else if(next_jump.type == CodeBranchType::Call) {
+                evt = out_trace.add_branches();
+                evt->set_source(next_jump.address);
+                evt->set_destination(next_jump.ok);
+                evt->set_type(trace::BranchType::CALL);
             } else {
                 next_jump.type = CodeBranchType::Invalid;
             }
@@ -242,6 +245,7 @@ int pt_process(std::string perf_path, std::string binary_path,
                 evt = out_trace.add_branches();
                 evt->set_source(br.address);
                 evt->set_destination(br.ok);
+                evt->set_type(trace::BranchType::JUMP);
 
                 br = disas.get_next_branch(br.ok);
             }

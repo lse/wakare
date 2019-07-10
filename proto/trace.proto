@@ -2,9 +2,16 @@ syntax = "proto3";
 
 package trace;
 
+enum BranchType {
+    JUMP = 0;
+    CONDJUMP = 1;
+    CALL = 2;
+}
+
 message BranchEvent {
     uint64 source = 1;
     uint64 destination = 2;
+    BranchType type = 3;
 }
 
 message MappingEvent {
