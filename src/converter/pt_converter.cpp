@@ -237,6 +237,16 @@ int pt_process(std::string perf_path, std::string binary_path,
                 evt->set_source(next_jump.address);
                 evt->set_destination(next_jump.ok);
                 evt->set_type(trace::BranchType::CALL);
+            } else if(next_jump.type == CodeBranchType::IndCall) {
+                evt = out_trace.add_branches();
+                evt->set_source(next_jump.address);
+                evt->set_destination(block.ip);
+                evt->set_type(trace::BranchType::INDCALL);
+            } else if(next_jump.type == CodeBranchType::IndJump) {
+                evt = out_trace.add_branches();
+                evt->set_source(next_jump.address);
+                evt->set_destination(block.ip);
+                evt->set_type(trace::BranchType::INDJUMP);
             } else {
                 next_jump.type = CodeBranchType::Invalid;
             }

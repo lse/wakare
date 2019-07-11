@@ -6,6 +6,8 @@ enum BranchType {
     JUMP = 0;
     CONDJUMP = 1;
     CALL = 2;
+    INDJUMP = 3;
+    INDCALL = 4;
 }
 
 message BranchEvent {
