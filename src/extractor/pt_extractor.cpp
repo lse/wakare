@@ -2,9 +2,9 @@
 #include <string>
 #include <fstream>
 #include <intel-pt.h>
-#include "converter/pt_converter.hh"
-#include "converter/disassembler.hh"
-#include "converter/perf_file.hh"
+#include "extractor/pt_extractor.hh"
+#include "extractor/disassembler.hh"
+#include "extractor/perf_file.hh"
 #include "trace.pb.h"
 
 static std::string get_realpath(std::string path)

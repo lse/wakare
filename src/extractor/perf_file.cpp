@@ -12,7 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "converter/perf_file.hh"
+#include "extractor/perf_file.hh"
 
 static int align_pagesize(int size)
 {

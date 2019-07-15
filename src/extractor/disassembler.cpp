@@ -9,7 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "converter/disassembler.hh"
+#include "extractor/disassembler.hh"
 
 ///////////////////// CET Workaround //////////////////////////
 struct cet_instruction {
