@@ -37,11 +37,11 @@ int StreamingBackend::process(std::istream& input_stream)
 
         // Dispatch
         if(evt.has_branch_evt()) {
-            handle_branch(evt.release_branch_evt());
+            handle_branch(evt.mutable_branch_evt());
         }
 
         if(evt.has_mapping_evt()) {
-            handle_mapping(evt.release_mapping_evt());
+            handle_mapping(evt.mutable_mapping_evt());
         }
     }
 

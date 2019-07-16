@@ -1,9 +1,11 @@
 #include <iostream>
 #include <fstream>
 #include <gflags/gflags.h>
+#include <google/protobuf/stubs/common.h>
 
 #include "dumper/streaming_backend.hh"
 #include "dumper/text_backend.hh"
+#include "dumper/sqlite_backend.hh"
 
 DEFINE_string(input, "trace.bin", "Input protobuf file");
 DEFINE_string(output, "trace.out", "Processed file path");
@@ -20,7 +22,7 @@ int main(int argc, char** argv)
         std::cerr << "Could not open input file: " << FLAGS_input << "\n";
         return 1;
     }
-    
+
     std::ofstream os(FLAGS_output, std::ios::binary);
 
     if(!os) {
@@ -29,22 +31,18 @@ int main(int argc, char** argv)
     }
 
     // Processing part
-    StreamingBackend* backend = nullptr;
-
     if(FLAGS_mode == "text") {
-        backend = new TextBackend(os);
+        TextBackend text_backend(os);
+        text_backend.process(is);
     } else if(FLAGS_mode == "sqlite") {
-        std::cout << "Not implemented\n";
+        os.close();
+        SqliteBackend sqlite_backend(FLAGS_output);
     } else {
         std::cout << "Could not find backend: " << FLAGS_mode << "\n";
     }
 
-    if(backend) {
-        backend->process(is);
-        delete backend;
-    }
-
     gflags::ShutDownCommandLineFlags();
+    google::protobuf::ShutdownProtobufLibrary();
 
     return 0;
 }

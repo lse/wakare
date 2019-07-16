@@ -12,6 +12,7 @@ include(FindProtobuf)
 find_library(LIB_IPT ipt)
 find_library(LIB_CAPSTONE capstone)
 find_library(LIB_GFLAGS gflags)
+find_library(LIB_SQLITE sqlite3)
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -g -Wall -fsanitize=address")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native")
@@ -39,7 +40,8 @@ set(EXTRACTOR_SOURCES
 set(DUMPER_SOURCES
     src/dumper/main.cpp
     src/dumper/streaming_backend.cpp
-    src/dumper/text_backend.cpp)
+    src/dumper/text_backend.cpp
+    src/dumper/sqlite_backend.cpp)
 
 add_subdirectory(proto)
 
@@ -84,4 +86,5 @@ target_link_libraries(extractor
 target_link_libraries(dumper
     proto
     "${PROTOBUF_LIBRARY}"
-    "${LIB_GFLAGS}")
+    "${LIB_GFLAGS}"
+    "${LIB_SQLITE}")
