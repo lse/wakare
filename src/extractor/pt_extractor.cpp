@@ -2,10 +2,14 @@
 #include <string>
 #include <fstream>
 #include <intel-pt.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "extractor/pt_extractor.hh"
 #include "extractor/disassembler.hh"
 #include "extractor/perf_file.hh"
 #include "trace.pb.h"
+
+using namespace google::protobuf::io;
 
 static std::string get_realpath(std::string path)
 {
@@ -139,25 +143,36 @@ int pt_process(std::string perf_path, std::string binary_path,
         return 1;
 
     // Setup the output file
-    std::ofstream out_stream(output_path, std::ofstream::out);
+    std::ofstream out_fstream(output_path, std::ofstream::out);
 
-    if(!out_stream) {
+    if(!out_fstream) {
         std::cerr << "Could not open file: " << output_path << "\n";
         return 1;
     }
 
     // Setup protobuf
-    trace::Trace out_trace;
+    trace::TraceEvent trace_evt;
+    
+    OstreamOutputStream* mapping_oos = new OstreamOutputStream(&out_fstream);
+    CodedOutputStream* mapping_os = new CodedOutputStream(mapping_oos);
 
     for(auto& map : perf_file.maps) {
         if(map.filename != "[vdso]") {
-            trace::MappingEvent* evt = out_trace.add_mappings();
+            trace::MappingEvent* evt = trace_evt.mutable_mapping_evt();
             evt->set_start(map.start);
             evt->set_size(map.size);
             evt->set_offset(map.offset);
             evt->set_filename(map.filename);
+
+            mapping_os->WriteVarint32(trace_evt.ByteSize());
+            trace_evt.SerializeToCodedStream(mapping_os);
         }
     }
+    
+    // Somehow protobuf buf writes the message when the stream objects are
+    // destroyed. There is no flush method so it is a bit ugly.
+    delete mapping_os;
+    delete mapping_oos;
 
     // Begin processing the trace
     int status = 0;
@@ -176,7 +191,7 @@ int pt_process(std::string perf_path, std::string binary_path,
         } else if(status == -pte_nosync 
                 || status == -pte_nomap
                 || emptycount > 10) {
-            std::cerr << "Warning: Trace out of skipping, seeking to next PSB\n";
+            std::cerr << "Warning: Trace out of sync, seeking to next PSB\n";
             status = pt_blk_sync_forward(blk_dec);
             emptycount = 0;
 
@@ -216,58 +231,68 @@ int pt_process(std::string perf_path, std::string binary_path,
         // Now handling jumps
         if(disas.is_mapped(block.ip)) {
             CodeBranch br = disas.get_next_branch(block.ip);
-            trace::BranchEvent* evt;
+            trace::BranchEvent* evt = nullptr;
 
             if(next_jump.type == CodeBranchType::Invalid) {
                 next_jump = br;
-            } else if(next_jump.type == CodeBranchType::CondJump) {
+                next_jump.type = CodeBranchType::Invalid;
+            } else {
+                evt = trace_evt.mutable_branch_evt();
+            }
+
+            if(next_jump.type == CodeBranchType::CondJump) {
                 if(block.ip == next_jump.ok) {
-                    evt = out_trace.add_branches();
                     evt->set_source(next_jump.address);
                     evt->set_destination(next_jump.ok);
                     evt->set_type(trace::BranchType::CONDJUMP);
                 } else if(block.ip == next_jump.fail) {
-                    evt = out_trace.add_branches();
                     evt->set_source(next_jump.address);
                     evt->set_destination(next_jump.fail);
                     evt->set_type(trace::BranchType::CONDJUMP);
                 }
             } else if(next_jump.type == CodeBranchType::Call) {
-                evt = out_trace.add_branches();
                 evt->set_source(next_jump.address);
                 evt->set_destination(next_jump.ok);
                 evt->set_type(trace::BranchType::CALL);
             } else if(next_jump.type == CodeBranchType::IndCall) {
-                evt = out_trace.add_branches();
                 evt->set_source(next_jump.address);
                 evt->set_destination(block.ip);
                 evt->set_type(trace::BranchType::INDCALL);
             } else if(next_jump.type == CodeBranchType::IndJump) {
-                evt = out_trace.add_branches();
                 evt->set_source(next_jump.address);
                 evt->set_destination(block.ip);
                 evt->set_type(trace::BranchType::INDJUMP);
-            } else {
-                next_jump.type = CodeBranchType::Invalid;
+            }
+            
+            // We serialize the message
+            OstreamOutputStream* branch_oos = new OstreamOutputStream(&out_fstream);
+            CodedOutputStream* branch_os = new CodedOutputStream(branch_oos);
+
+            if(evt) {
+                branch_os->WriteVarint32(trace_evt.ByteSize());
+                trace_evt.SerializeToCodedStream(branch_os);
             }
 
             while(br.type == CodeBranchType::Jump) {
-                evt = out_trace.add_branches();
+                evt = trace_evt.mutable_branch_evt();
                 evt->set_source(br.address);
                 evt->set_destination(br.ok);
                 evt->set_type(trace::BranchType::JUMP);
+
+                branch_os->WriteVarint32(trace_evt.ByteSize());
+                trace_evt.SerializeToCodedStream(branch_os);
 
                 br = disas.get_next_branch(br.ok);
             }
 
             next_jump = br;
+
+            delete branch_os;
+            delete branch_oos;
         }
     }
 
-    // Now we write the trace
-    out_trace.SerializeToOstream(&out_stream);
-    out_stream.close();
-
+    out_fstream.close();
     google::protobuf::ShutdownProtobufLibrary();
     
     // pt cleanup

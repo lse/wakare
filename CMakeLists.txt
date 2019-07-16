@@ -36,6 +36,11 @@ set(EXTRACTOR_SOURCES
     src/extractor/pt_extractor.cpp
     src/extractor/disassembler.cpp)
 
+set(DUMPER_SOURCES
+    src/dumper/main.cpp
+    src/dumper/streaming_backend.cpp
+    src/dumper/text_backend.cpp)
+
 add_subdirectory(proto)
 
 add_executable(tracer 
@@ -46,11 +51,21 @@ add_executable(extractor
     ${PROTO_SRCS}
     ${PROTO_HDRS})
 
+add_executable(dumper
+    ${DUMPER_SOURCES}
+    ${PROTO_SRCS}
+    ${PROTO_HDRS})
+
 target_include_directories(tracer
     PUBLIC
     include)
 
 target_include_directories(extractor
+    PUBLIC
+    include
+    proto)
+
+target_include_directories(dumper
     PUBLIC
     include
     proto)
@@ -65,3 +80,8 @@ target_link_libraries(extractor
     "${LIB_CAPSTONE}"
     "${LIB_GFLAGS}"
     "${PROTOBUF_LIBRARY}")
+
+target_link_libraries(dumper
+    proto
+    "${PROTOBUF_LIBRARY}"
+    "${LIB_GFLAGS}")

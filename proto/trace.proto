@@ -23,7 +23,9 @@ message MappingEvent {
     string filename = 4;
 }
 
-message Trace {
-    repeated MappingEvent mappings = 1;
-    repeated BranchEvent branches = 2;
+message TraceEvent {
+    oneof trace_evt {
+        BranchEvent branch_evt = 1;
+        MappingEvent mapping_evt = 2;
+    }
 }
