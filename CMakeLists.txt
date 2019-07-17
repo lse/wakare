@@ -20,7 +20,7 @@ set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS} -ggdb -fsanitize=address")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 
 set(TRACER_SOURCES
     src/tracer/main.c

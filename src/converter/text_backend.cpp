@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <cstdint>
 
 #include "converter/text_backend.hh"
@@ -20,6 +21,17 @@ static const char* __branch_type_str(trace::BranchEvent* branch)
     }
 
     return "INVALID";
+}
+
+bool TextBackend::setup(std::string path)
+{
+    out_file_.open(path, std::ios::binary);
+    if(!out_file_) {
+        std::cerr << "Could not open file \"" << path << "\"\n";
+        return false;
+    }
+
+    return true;
 }
 
 void TextBackend::handle_branch(trace::BranchEvent* branch)

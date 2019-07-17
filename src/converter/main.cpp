@@ -11,6 +11,26 @@ DEFINE_string(input, "trace.bin", "Input protobuf file");
 DEFINE_string(output, "trace.out", "Processed file path");
 DEFINE_string(mode, "text", "Dumping mode (text / sqlite)");
 
+static void handle_text_mode(std::istream& input, std::string outpath)
+{
+    TextBackend backend;
+
+    if(!backend.setup(outpath))
+        return;
+
+    backend.process(input);
+}
+
+static void handle_sqlite_mode(std::istream& input, std::string outpath)
+{
+    SqliteBackend backend;
+
+    if(!backend.setup(outpath))
+        return;
+
+    backend.process(input);
+}
+
 int main(int argc, char** argv)
 {
     gflags::SetUsageMessage("converter -input <file> -output <file> -mode (text/sqlite)");
@@ -23,20 +43,11 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    std::ofstream os(FLAGS_output, std::ios::binary);
-
-    if(!os) {
-        std::cerr << "Could not open output file: " << FLAGS_output << "\n";
-        return 1;
-    }
-
     // Processing part
     if(FLAGS_mode == "text") {
-        TextBackend text_backend(os);
-        text_backend.process(is);
+        handle_text_mode(is, FLAGS_output);
     } else if(FLAGS_mode == "sqlite") {
-        os.close();
-        SqliteBackend sqlite_backend(FLAGS_output);
+        handle_sqlite_mode(is, FLAGS_output);
     } else {
         std::cout << "Could not find backend: " << FLAGS_mode << "\n";
     }
