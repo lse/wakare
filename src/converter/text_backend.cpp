@@ -1,6 +1,7 @@
 #include <iostream>
+#include <cstdint>
 
-#include "dumper/text_backend.hh"
+#include "converter/text_backend.hh"
 #include "trace.pb.h"
 
 static const char* __branch_type_str(trace::BranchEvent* branch)
@@ -31,6 +32,12 @@ void TextBackend::handle_branch(trace::BranchEvent* branch)
 void TextBackend::handle_mapping(trace::MappingEvent* mapping)
 {
     out_file_ << "MAPPING " << "0x" << std::hex << mapping->start() << " -> "
-        << "0x" << std::hex << (mapping->start() + mapping->size()) << " "
+        << "0x" << (mapping->start() + mapping->size()) << " "
         << mapping->filename() << "\n";
+}
+
+void TextBackend::handle_hitcount(trace::HitcountEvent* hit)
+{
+    out_file_ << "BBHIT   " << "0x" << std::hex << hit->address() << " "
+        << std::dec << hit->count() << "\n";
 }

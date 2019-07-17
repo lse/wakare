@@ -3,9 +3,9 @@
 #include <gflags/gflags.h>
 #include <google/protobuf/stubs/common.h>
 
-#include "dumper/streaming_backend.hh"
-#include "dumper/text_backend.hh"
-#include "dumper/sqlite_backend.hh"
+#include "converter/streaming_backend.hh"
+#include "converter/text_backend.hh"
+#include "converter/sqlite_backend.hh"
 
 DEFINE_string(input, "trace.bin", "Input protobuf file");
 DEFINE_string(output, "trace.out", "Processed file path");
@@ -13,7 +13,7 @@ DEFINE_string(mode, "text", "Dumping mode (text / sqlite)");
 
 int main(int argc, char** argv)
 {
-    gflags::SetUsageMessage("dumper -input <file> -output <file> -mode (text/sqlite)");
+    gflags::SetUsageMessage("converter -input <file> -output <file> -mode (text/sqlite)");
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 
     std::ifstream is(FLAGS_input, std::ios::binary);

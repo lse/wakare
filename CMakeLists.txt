@@ -37,11 +37,11 @@ set(EXTRACTOR_SOURCES
     src/extractor/pt_extractor.cpp
     src/extractor/disassembler.cpp)
 
-set(DUMPER_SOURCES
-    src/dumper/main.cpp
-    src/dumper/streaming_backend.cpp
-    src/dumper/text_backend.cpp
-    src/dumper/sqlite_backend.cpp)
+set(CONVERTER_SOURCES
+    src/converter/main.cpp
+    src/converter/streaming_backend.cpp
+    src/converter/text_backend.cpp
+    src/converter/sqlite_backend.cpp)
 
 add_subdirectory(proto)
 
@@ -53,8 +53,8 @@ add_executable(extractor
     ${PROTO_SRCS}
     ${PROTO_HDRS})
 
-add_executable(dumper
-    ${DUMPER_SOURCES}
+add_executable(converter
+    ${CONVERTER_SOURCES}
     ${PROTO_SRCS}
     ${PROTO_HDRS})
 
@@ -67,7 +67,7 @@ target_include_directories(extractor
     include
     proto)
 
-target_include_directories(dumper
+target_include_directories(converter
     PUBLIC
     include
     proto)
@@ -83,7 +83,7 @@ target_link_libraries(extractor
     "${LIB_GFLAGS}"
     "${PROTOBUF_LIBRARY}")
 
-target_link_libraries(dumper
+target_link_libraries(converter
     proto
     "${PROTOBUF_LIBRARY}"
     "${LIB_GFLAGS}"

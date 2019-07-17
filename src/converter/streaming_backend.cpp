@@ -5,7 +5,7 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/io/coded_stream.h>
 
-#include "dumper/streaming_backend.hh"
+#include "converter/streaming_backend.hh"
 #include "trace.pb.h"
 
 using namespace google::protobuf::io;
@@ -42,6 +42,10 @@ int StreamingBackend::process(std::istream& input_stream)
 
         if(evt.has_mapping_evt()) {
             handle_mapping(evt.mutable_mapping_evt());
+        }
+
+        if(evt.has_hitcount_evt()) {
+            handle_hitcount(evt.mutable_hitcount_evt());
         }
     }
 

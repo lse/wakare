@@ -2,8 +2,9 @@
 #define TEXT_BACKEND_HH
 
 #include <iostream>
+#include <cstdint>
 
-#include "dumper/streaming_backend.hh"
+#include "converter/streaming_backend.hh"
 #include "trace.pb.h"
 
 class TextBackend: public StreamingBackend {
@@ -12,6 +13,7 @@ class TextBackend: public StreamingBackend {
 
     void handle_branch(trace::BranchEvent* branch) override;
     void handle_mapping(trace::MappingEvent* mapping) override;
+    void handle_hitcount(trace::HitcountEvent* hit) override;
 
     private:
     std::ostream& out_file_;

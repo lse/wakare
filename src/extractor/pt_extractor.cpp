@@ -1,7 +1,10 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <map>
+#include <cstdint>
 #include <intel-pt.h>
+
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "extractor/pt_extractor.hh"
@@ -125,6 +128,15 @@ static void log_pt_err(struct pt_block_decoder* dec, enum pt_error_code err)
     std::cerr << pt_errstr(err) << "\n";
 }
 
+static void bb_hit(std::map<uint64_t, uint64_t>& hitmap, uint64_t address)
+{
+    if(hitmap.find(address) == hitmap.end()) {
+        hitmap[address] = 1;
+    } else {
+        hitmap[address]++;
+    }
+}
+
 int pt_process(std::string perf_path, std::string binary_path,
         std::string output_path)
 {
@@ -152,27 +164,27 @@ int pt_process(std::string perf_path, std::string binary_path,
 
     // Setup protobuf
     trace::TraceEvent trace_evt;
-    
-    OstreamOutputStream* mapping_oos = new OstreamOutputStream(&out_fstream);
-    CodedOutputStream* mapping_os = new CodedOutputStream(mapping_oos);
+    std::map<uint64_t, uint64_t> bb_hitcount;
 
-    for(auto& map : perf_file.maps) {
-        if(map.filename != "[vdso]") {
-            trace::MappingEvent* evt = trace_evt.mutable_mapping_evt();
-            evt->set_start(map.start);
-            evt->set_size(map.size);
-            evt->set_offset(map.offset);
-            evt->set_filename(map.filename);
+    // Somehow protobuf writes the message when the stream objects are
+    // destroyed. There is no flush method so it is a bit ugly.
+    {
+        OstreamOutputStream mapping_oos(&out_fstream);
+        CodedOutputStream mapping_os(&mapping_oos);
 
-            mapping_os->WriteVarint32(trace_evt.ByteSize());
-            trace_evt.SerializeToCodedStream(mapping_os);
+        for(auto& map : perf_file.maps) {
+            if(map.filename != "[vdso]") {
+                trace::MappingEvent* evt = trace_evt.mutable_mapping_evt();
+                evt->set_start(map.start);
+                evt->set_size(map.size);
+                evt->set_offset(map.offset);
+                evt->set_filename(map.filename);
+
+                mapping_os.WriteVarint32(trace_evt.ByteSize());
+                trace_evt.SerializeToCodedStream(&mapping_os);
+            }
         }
     }
-    
-    // Somehow protobuf buf writes the message when the stream objects are
-    // destroyed. There is no flush method so it is a bit ugly.
-    delete mapping_os;
-    delete mapping_oos;
 
     // Begin processing the trace
     int status = 0;
@@ -233,6 +245,8 @@ int pt_process(std::string perf_path, std::string binary_path,
             CodeBranch br = disas.get_next_branch(block.ip);
             trace::BranchEvent* evt = nullptr;
 
+            bb_hit(bb_hitcount, block.ip);
+
             if(next_jump.type == CodeBranchType::Invalid) {
                 next_jump = br;
                 next_jump.type = CodeBranchType::Invalid;
@@ -262,33 +276,37 @@ int pt_process(std::string perf_path, std::string binary_path,
                 evt->set_source(next_jump.address);
                 evt->set_destination(block.ip);
                 evt->set_type(trace::BranchType::INDJUMP);
+            } else if(next_jump.type == CodeBranchType::Jump) {
+                evt->set_source(next_jump.address);
+                evt->set_destination(next_jump.ok);
+                evt->set_type(trace::BranchType::JUMP);
             }
             
             // We serialize the message
-            OstreamOutputStream* branch_oos = new OstreamOutputStream(&out_fstream);
-            CodedOutputStream* branch_os = new CodedOutputStream(branch_oos);
+            OstreamOutputStream branch_oos(&out_fstream);
+            CodedOutputStream branch_os(&branch_oos);
 
             if(evt) {
-                branch_os->WriteVarint32(trace_evt.ByteSize());
-                trace_evt.SerializeToCodedStream(branch_os);
-            }
-
-            while(br.type == CodeBranchType::Jump) {
-                evt = trace_evt.mutable_branch_evt();
-                evt->set_source(br.address);
-                evt->set_destination(br.ok);
-                evt->set_type(trace::BranchType::JUMP);
-
-                branch_os->WriteVarint32(trace_evt.ByteSize());
-                trace_evt.SerializeToCodedStream(branch_os);
-
-                br = disas.get_next_branch(br.ok);
+                branch_os.WriteVarint32(trace_evt.ByteSize());
+                trace_evt.SerializeToCodedStream(&branch_os);
             }
 
             next_jump = br;
+        }
+    }
 
-            delete branch_os;
-            delete branch_oos;
+    // Same flushing trick
+    {
+        OstreamOutputStream branch_oos(&out_fstream);
+        CodedOutputStream branch_os(&branch_oos);
+
+        for(auto& bb_hit: bb_hitcount) {
+            trace::HitcountEvent* evt = trace_evt.mutable_hitcount_evt();
+            evt->set_address(bb_hit.first);
+            evt->set_count(bb_hit.second);
+
+            branch_os.WriteVarint32(trace_evt.ByteSize());
+            trace_evt.SerializeToCodedStream(&branch_os);
         }
     }
 

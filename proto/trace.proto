@@ -23,9 +23,15 @@ message MappingEvent {
     string filename = 4;
 }
 
+message HitcountEvent {
+    uint64 address = 1;
+    uint64 count = 2;
+}
+
 message TraceEvent {
     oneof trace_evt {
         BranchEvent branch_evt = 1;
         MappingEvent mapping_evt = 2;
+        HitcountEvent hitcount_evt = 3;
     }
 }

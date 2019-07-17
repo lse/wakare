@@ -1,8 +1,7 @@
-#include <map>
 #include <string>
 #include <cstdint>
 #include <sqlite3.h>
-#include "dumper/sqlite_backend.hh"
+#include "converter/sqlite_backend.hh"
 
 SqliteBackend::SqliteBackend(std::string path)
 {
@@ -28,15 +27,14 @@ SqliteBackend::~SqliteBackend()
 
 void SqliteBackend::handle_branch(trace::BranchEvent* branch)
 {
-    // Computing the bb hitcounts
-    if(bb_hitcount_.find(branch->destination()) == bb_hitcount_.end()) {
-        bb_hitcount_[branch->destination()] = 1;
-    } else {
-        bb_hitcount_[branch->destination()]++;
-    }
 }
 
 void SqliteBackend::handle_mapping(trace::MappingEvent* mapping)
 {
     
+}
+
+void SqliteBackend::handle_hitcount(trace::HitcountEvent* hit)
+{
+
 }

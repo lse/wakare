@@ -12,6 +12,7 @@ class StreamingBackend {
 
     virtual void handle_branch(trace::BranchEvent* branch) = 0;
     virtual void handle_mapping(trace::MappingEvent* mapping) = 0;
+    virtual void handle_hitcount(trace::HitcountEvent* hit) = 0;
 };
 
 #endif
