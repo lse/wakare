@@ -8,7 +8,7 @@
 #include "trace.pb.h"
 
 // Commit a transaction every N operations
-#define COMMIT_THRESHOLD 32768
+#define COMMIT_THRESHOLD 65536
 
 class SqliteBackend: public StreamingBackend {
     public:
@@ -24,6 +24,7 @@ class SqliteBackend: public StreamingBackend {
     void check_flush();
 
     int stmt_tr_count_ = 0; // number of operations in the transaction
+    int branch_index_ = 0;
     int primary_key_ = 0;
     sqlite3* sqlite_handle_;
     sqlite3_stmt* branch_ins_handle_ = nullptr;

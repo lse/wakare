@@ -27,7 +27,7 @@ bool SqliteBackend::setup(std::string path)
     // TODO: Add error handling if database exists?
     int err = 0;
 
-    err |= sqlite3_exec(sqlite_handle_, "CREATE TABLE branches (id INTEGR NOT NULL PRIMARY KEY, type INTEGER, source INTEGER, destination INTEGER);", 0, 0, 0);
+    err |= sqlite3_exec(sqlite_handle_, "CREATE TABLE branches (step INTEGER NOT NULL PRIMARY KEY, type INTEGER, source INTEGER, destination INTEGER);", 0, 0, 0);
     err |= sqlite3_exec(sqlite_handle_, "CREATE TABLE mappings (id INTEGER NOT NULL PRIMARY KEY, filename TEXT, start INTEGER, end INTEGER);", 0, 0, 0);
     err |= sqlite3_exec(sqlite_handle_, "CREATE TABLE hitcounts (id INTEGER NOT NULL PRIMARY KEY, address INTEGER, hitcount INTEGER);", 0, 0, 0);
 
@@ -38,7 +38,7 @@ bool SqliteBackend::setup(std::string path)
 
     err = 0;
 
-    err |= sqlite3_prepare_v2(sqlite_handle_, "INSERT INTO branches (id, type, source, destination) VALUES (?1, ?2, ?3, ?4);", -1, &branch_ins_handle_, NULL);
+    err |= sqlite3_prepare_v2(sqlite_handle_, "INSERT INTO branches (step, type, source, destination) VALUES (?1, ?2, ?3, ?4);", -1, &branch_ins_handle_, NULL);
     err |= sqlite3_prepare_v2(sqlite_handle_, "INSERT INTO mappings (id, filename, start, end) VALUES (?1, ?2, ?3, ?4);", -1, &mapping_ins_handle_, NULL);
     err |= sqlite3_prepare_v2(sqlite_handle_, "INSERT INTO hitcounts (id, address, hitcount) VALUES (?1, ?2, ?3);", -1, &hitcount_ins_handle_, NULL);
 
@@ -73,7 +73,7 @@ void SqliteBackend::handle_branch(trace::BranchEvent* branch)
 {
     check_flush();
 
-    sqlite3_bind_int(branch_ins_handle_, 1, primary_key_++);
+    sqlite3_bind_int(branch_ins_handle_, 1, branch_index_++);
     sqlite3_bind_int(branch_ins_handle_, 2, branch->type());
     sqlite3_bind_int64(branch_ins_handle_, 3, branch->source());
     sqlite3_bind_int64(branch_ins_handle_, 4, branch->destination());
