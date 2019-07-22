@@ -160,7 +160,7 @@ static uint64_t get_next_bb_addr(struct pt_block_decoder* dec)
     if(status == -pte_eos)
         return 0;
 
-    if(status == -pte_nosync || status == -pte_nomap) {
+    if(status == -pte_nosync || status == -pte_nomap || block.ninsn == 0) {
         std::cerr << "Warning: Trace out of sync, seeking to next PSB\n";
         status = pt_blk_sync_forward(dec);
 

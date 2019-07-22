@@ -59,6 +59,8 @@ For now the project has a few limitations:
 
 ## Dependencies
 - protobuf
+- capstone
 - libipt
 - sqlite3
+- gflags
 - cmake
