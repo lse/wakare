@@ -1,24 +1,64 @@
 # Tracing experimentation
-The goal of this project is to provide a tool able to gather information about
-branches taken during a program execution. These branches allow us to build
-coverage information about a target program that can then be used for various
-purpose such as reverse engineering, devirtualization or binary reconstruction.
+The goal of this project is to provide a set of tools able to produce an execution
+trace for a given program. The resulting trace can then be used to gather information
+about code coverage, recover indirect branches targets or even help binary devirtualization.
 
-## Backends
-There are two different backends collecting branch information.
+## Collecting traces
+Only Intel PT traces collected by perf are supported by the tool. To collect a trace with
+perf you can specify the intel pt pmu as such:
 
-The first backend is based on ptrace. It uses PTRACE\_SINGLEBLOCK in a loop to 
-stop on each new basic block target of a branch. It then disassembles the 
-instructions of the basic block to find the next branch. This implementation is
-naive and has severe limitations. The first one is the speed. Ptrace is 
-extremely slow and even for trivial programs the performance is abysmal (/bin/ls -lah
-executes in around 10s). Another concern is that it is not easily possible to
-filter ip ranges which means that the resulting trace contains not only the program's
-execution but also the ip from the libraries.
+```
+$ perf record -e intel_pt//u prog <args...>
+```
 
-The second is backend is much more light and fast. It uses Intel Processor Trace
-traces to collect the branches. This backend takes as an input a trace collected using
-the **perf** tool using the intel pt pmu. The resulting perf.data file contains raw
-intel pt traces that can then be processed using libipt to extract all the branches.
-The pt perf script in ```scripts``` filters the jumps directly in hardware for smaller
-traces.
+You can also use the provided scripts that adds a few optimizations to minimize trace drops
+(needs root):
+
+```
+# ./scripts/pt_trace.sh
+```
+
+## Trace content
+Traces produced by the tool contain the following pieces of information:
+- Branches:
+    - Type (Jump/Cond Jump/Call)
+    - Source address
+    - Destination address
+- Executable mappings:
+    - Address range
+    - File path
+- Basic block hitcount:
+    - Address
+    - Hitcount
+
+## Project structure
+The project is divided into two different programs. The first one is called "extractor".
+It takes as an input an execution trace in a foreign format and converts it to a 
+more generic representation in the form of a protobuf message stream. The second program
+is the "converter", it uses the protobuf messages and converts them to a form more suitable
+for other programs to use.
+
+```
+                                                                         _ text
+                  +-----------+                         +-----------+   /
+input trace ----> | extractor | --> protobuf stream --> | converter | --
+                  +-----------+                         +-----------+   \_ sqlite
+```
+
+Supported input formats:
+    - perf data file containing Intel PT data
+
+Supported output:
+    - text
+    - sqlite
+
+## Limitations
+For now the project has a few limitations:
+- Only supports x86\_64
+- No support for programs using multiple cores/threads
+
+## Dependencies
+- protobuf
+- libipt
+- sqlite3
+- cmake

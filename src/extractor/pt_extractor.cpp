@@ -239,6 +239,8 @@ int pt_process(std::string perf_path, std::string binary_path,
 
     prev_jump.type = CodeBranchType::Invalid;
 
+    // TODO: Handle different return events like mode switching (32/64),
+    // eof, pt error, etc...
     while(true) {
         uint64_t bb_addr = get_next_bb_addr(blk_dec);
 
