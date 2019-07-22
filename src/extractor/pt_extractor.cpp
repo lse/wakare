@@ -137,6 +137,50 @@ static void bb_hit(std::map<uint64_t, uint64_t>& hitmap, uint64_t address)
     }
 }
 
+static uint64_t get_next_bb_addr(struct pt_block_decoder* dec)
+{
+    struct pt_event evt;
+    struct pt_block block;
+    int status;
+
+    // Handle block events before requesting a proper block
+    do {
+        status = pt_blk_event(dec, &evt, sizeof(struct pt_event));
+
+        // Trace is enabled, meaning that the event address is the next
+        // basic block processed by our program.
+        if(status == ptev_enabled)
+            return evt.variant.enabled.ip;
+
+    } while(status >= 0);
+
+    // Requesting the next block
+    status = pt_blk_next(dec, &block, sizeof(struct pt_block));
+
+    if(status == -pte_eos)
+        return 0;
+
+    if(status == -pte_nosync || status == -pte_nomap) {
+        std::cerr << "Warning: Trace out of sync, seeking to next PSB\n";
+        status = pt_blk_sync_forward(dec);
+
+        if(status == -pte_eos) {
+            std::cerr << "No new PSB\n";
+            return 0;
+        }
+
+        if(status < 0) {
+            log_pt_err(dec, (pt_error_code)-status);
+            return 0;
+        }
+
+        // TODO: Clean this part of the code
+        return get_next_bb_addr(dec);
+    }
+
+    return block.ip;
+}
+
 int pt_process(std::string perf_path, std::string binary_path,
         std::string output_path)
 {
@@ -188,98 +232,77 @@ int pt_process(std::string perf_path, std::string binary_path,
 
     // Begin processing the trace
     int status = 0;
-    CodeBranch next_jump;
-    struct pt_block block;
-    int emptycount = 0;
+    CodeBranch prev_jump;
 
-    next_jump.type = CodeBranchType::Invalid;
+    uint64_t bb_low = 0;
+    uint64_t bb_high = 0;
 
-    while(status, pte_eos) {
-        status = pt_blk_next(blk_dec, &block, sizeof(struct pt_block));
-        
-        // Handling eof and out of sync
-        if(status == -pte_eos) {
+    prev_jump.type = CodeBranchType::Invalid;
+
+    while(true) {
+        uint64_t bb_addr = get_next_bb_addr(blk_dec);
+
+        // We reached eos or an error
+        if(bb_addr == 0)
             break;
-        } else if(status == -pte_nosync 
-                || status == -pte_nomap
-                || emptycount > 10) {
-            std::cerr << "Warning: Trace out of sync, seeking to next PSB\n";
-            status = pt_blk_sync_forward(blk_dec);
-            emptycount = 0;
 
-            if(status == -pte_eos) {
-                std::cerr << "No new PSB\n";
-                break;
-            }
-
-            if(status < 0) {
-                log_pt_err(blk_dec, (pt_error_code)-status);
-                break;
-            }
-
-            continue;
-        } else if(status < 0) {
-            log_pt_err(blk_dec, (pt_error_code)-status);
-            break;
-        }
-
-        // Handling event skipping
-        if(status & pts_event_pending) {
-            struct pt_event evt;
-            int evt_status = 0;
-
-            while(evt_status >= 0) {
-                evt_status = pt_blk_event(blk_dec, &evt, 
-                        sizeof(struct pt_event));
-            }
-        }
-
-        // handling empty basic blocks
-        if(block.ninsn == 0) {
-            emptycount++;
-            continue;
-        }
 
         // Now handling jumps
-        if(disas.is_mapped(block.ip)) {
-            CodeBranch br = disas.get_next_branch(block.ip);
+        if(disas.is_mapped(bb_addr)) {
+            CodeBranch br = disas.get_next_branch(bb_addr);
+
+            // We skip fragmented and duplicate basic blocks
+            if(br.address >= bb_low && br.address <= bb_high)
+                continue;
+
+            // If the current branch is out of the current range we need to
+            // update the range.
+            bb_low = bb_addr;
+            bb_high = br.address;
+
             trace::BranchEvent* evt = nullptr;
 
-            bb_hit(bb_hitcount, block.ip);
+            bb_hit(bb_hitcount, bb_addr);
 
-            if(next_jump.type == CodeBranchType::Invalid) {
-                next_jump = br;
-                next_jump.type = CodeBranchType::Invalid;
-            } else {
-                evt = trace_evt.mutable_branch_evt();
+            // First valid block encountered
+            if(prev_jump.type == CodeBranchType::Invalid ||
+                    prev_jump.type == CodeBranchType::Return) {
+                prev_jump = br;
+                continue;
             }
 
-            if(next_jump.type == CodeBranchType::CondJump) {
-                if(block.ip == next_jump.ok) {
-                    evt->set_source(next_jump.address);
-                    evt->set_destination(next_jump.ok);
+            if(prev_jump.type == CodeBranchType::CondJump) {
+                if(bb_addr == prev_jump.ok) {
+                    evt = trace_evt.mutable_branch_evt();
+                    evt->set_source(prev_jump.address);
+                    evt->set_destination(prev_jump.ok);
                     evt->set_type(trace::BranchType::CONDJUMP);
-                } else if(block.ip == next_jump.fail) {
-                    evt->set_source(next_jump.address);
-                    evt->set_destination(next_jump.fail);
+                } else {
+                    // There is a nasty edge case where this doesn't work.
+                    // If the true branch of a jcc jumps to a block with
+                    // a return, pt will not generate a basic block event.
+                    // As such the next bb_addr will be the address after the
+                    // return.
+                    evt = trace_evt.mutable_branch_evt();
+                    evt->set_source(prev_jump.address);
+                    evt->set_destination(prev_jump.fail);
                     evt->set_type(trace::BranchType::CONDJUMP);
                 }
-            } else if(next_jump.type == CodeBranchType::Call) {
-                evt->set_source(next_jump.address);
-                evt->set_destination(next_jump.ok);
-                evt->set_type(trace::BranchType::CALL);
-            } else if(next_jump.type == CodeBranchType::IndCall) {
-                evt->set_source(next_jump.address);
-                evt->set_destination(block.ip);
-                evt->set_type(trace::BranchType::INDCALL);
-            } else if(next_jump.type == CodeBranchType::IndJump) {
-                evt->set_source(next_jump.address);
-                evt->set_destination(block.ip);
-                evt->set_type(trace::BranchType::INDJUMP);
-            } else if(next_jump.type == CodeBranchType::Jump) {
-                evt->set_source(next_jump.address);
-                evt->set_destination(next_jump.ok);
-                evt->set_type(trace::BranchType::JUMP);
+            } else if(prev_jump.type == CodeBranchType::Call) {
+                    evt = trace_evt.mutable_branch_evt();
+                    evt->set_source(prev_jump.address);
+                    evt->set_destination(prev_jump.ok);
+                    evt->set_type(trace::BranchType::CALL);
+            } else if(prev_jump.type == CodeBranchType::IndCall) {
+                    evt = trace_evt.mutable_branch_evt();
+                    evt->set_source(prev_jump.address);
+                    evt->set_destination(bb_addr);
+                    evt->set_type(trace::BranchType::INDCALL);
+            } else if(prev_jump.type == CodeBranchType::IndJump) {
+                    evt = trace_evt.mutable_branch_evt();
+                    evt->set_source(prev_jump.address);
+                    evt->set_destination(bb_addr);
+                    evt->set_type(trace::BranchType::INDJUMP);
             }
             
             // We serialize the message
@@ -291,7 +314,33 @@ int pt_process(std::string perf_path, std::string binary_path,
                 trace_evt.SerializeToCodedStream(&branch_os);
             }
 
-            next_jump = br;
+            // This is necessary as pt doesn't log the destination of direct
+            // jumps (and thus libipt doesn't generate a basic block address).
+            while(br.type == CodeBranchType::Jump) {
+                evt = trace_evt.mutable_branch_evt();
+                evt->set_source(br.address);
+                evt->set_destination(br.ok);
+                evt->set_type(trace::BranchType::JUMP);
+
+                // We generate the event as no basic block event will be
+                // generated by ipt.
+                bb_hit(bb_hitcount, br.ok);
+
+                // Sometimes we get duplicates. By setting up the invalid
+                // address range we can filter them out.
+                bb_low = br.ok;
+                br = disas.get_next_branch(br.ok);
+                bb_high = br.address;
+
+                branch_os.WriteVarint32(trace_evt.ByteSize());
+                trace_evt.SerializeToCodedStream(&branch_os);
+            }
+
+            prev_jump = br;
+        } else {
+            prev_jump.type = CodeBranchType::Invalid;
+            bb_low = 0;
+            bb_high = 0;
         }
     }
 
