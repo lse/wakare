@@ -45,10 +45,10 @@ input trace ----> | extractor | --> protobuf stream --> | converter | --
                   +-----------+                         +-----------+   \_ sqlite
 ```
 
-Supported input formats:
+- Supported input formats:
     - perf data file containing Intel PT data
 
-Supported output:
+- Supported output:
     - text
     - sqlite
 
