@@ -1,4 +1,4 @@
-# Tracing experimentation
+# Wakare
 The goal of this project is to provide a set of tools able to produce an execution
 trace for a given program. The resulting trace can then be used to gather information
 about code coverage, recover indirect branches targets or even help binary devirtualization.
@@ -56,6 +56,18 @@ input trace ----> | extractor | --> protobuf stream --> | converter | --
 For now the project has a few limitations:
 - Only supports x86\_64
 - No support for programs using multiple cores/threads
+
+## Disassembler plugins
+Plugins for disassemblers can be found in the ```plugins/``` folder.
+
+- Binary ninja
+    - Requirements:
+        - Python 3
+        - Version > 1.1.1689 (for UI plugins support)
+    - Features:
+        - Basic block coloration
+        - Indirect branch target resolution (right click on indirect call/jump)
+        - Support for PIE executables
 
 ## Dependencies
 - protobuf
