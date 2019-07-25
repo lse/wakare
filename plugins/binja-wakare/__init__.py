@@ -103,7 +103,7 @@ def get_llil_at(bv, addr):
     return None
 
 def db_required(func):
-    """ Decorator marking function needing a database instance """
+    """ Decorator marking functions needing a database instance """
     global LOADED_DB
 
     def inner(*args, **kwargs):
@@ -157,15 +157,11 @@ def db_load(bv):
 def highlight_bbs(bv):
     """ Lists the hitcounts of all basic blocks in the program and colors the in the graph """
     global LOADED_DB
-    max_val = -1
 
     highlight_color = highlight.HighlightColor(red=27, green=232, blue=0)
 
     for address, hitcount in LOADED_DB.get_hitcounts():
         bb = bv.get_basic_blocks_at(address)
-
-        if max_val == -1:
-            max_val = hitcount
 
         if len(bb) == 0:
             continue

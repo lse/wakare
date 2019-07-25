@@ -19,6 +19,7 @@ fi
 
 # Building the samples
 echo "Building samples..."
+./samples/clean.sh
 ./samples/build.sh
 
 echo "Starting tests"
@@ -43,20 +44,22 @@ do
         fi
 
         # Testing the extractor
-        ./extractor -binary $PROG_PATH
+        OUTPUT=$(./extractor -binary $PROG_PATH 2>&1)
 
         if [ $? -ne 0 ]; then
             echo -e "[$FAIL_TXT] Extractor"
+            echo "$OUTPUT"
             continue
         fi
 
         echo -e "[$OK_TXT] Extractor"
 
         # Testing the converter in text mode
-        ./converter -mode text
+        OUTPUT=$(./converter -mode text 2>&1)
 
         if [ $? -ne 0 ]; then
             echo -e "[$FAIL_TXT] Converter (txt)"
+            echo "$OUTPUT"
             continue
         fi
 
@@ -64,10 +67,11 @@ do
         mv trace.out "./samples/$folder/trace_$mode.txt"
 
         # Testing the converter in sqlite mode
-        ./converter -mode sqlite
+        OUTPUT=$(./converter -mode sqlite 2>&1)
 
         if [ $? -ne 0 ]; then
             echo -e "[$FAIL_TXT] Converter (sqlite)"
+            echo "$OUTPUT"
             continue
         fi
 

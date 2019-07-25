@@ -7,7 +7,7 @@
 #include <capstone/capstone.h>
 #include <sys/mman.h>
 
-enum CodeBranchType {
+enum class CodeBranchType {
     Jump,
     IndJump,
     CondJump,
