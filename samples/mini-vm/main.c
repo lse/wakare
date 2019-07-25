@@ -64,13 +64,9 @@ static vm main_vm = {
 
 int main(int argc, char** argv)
 {
-    if(argc != 3) {
-        printf("usage:\n  %s <number 1> <number 2>\n", argv[0]);
-        return 1;
-    }
-
-    main_vm.regs[REG_A] = strtoul(argv[1], 0, 10);
-    main_vm.regs[REG_B] = strtoul(argv[2], 0, 10);
+    // We hardcode values for the tests
+    main_vm.regs[REG_A] = strtoul("50", 0, 10);
+    main_vm.regs[REG_B] = strtoul("12", 0, 10);
 
     while(1) {
         instruction* ins = &main_vm.code[main_vm.ip];
