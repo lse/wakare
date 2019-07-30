@@ -16,8 +16,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(EXTRACTOR_SOURCES
     src/extractor/main.cpp
     src/extractor/perf_file.cpp
-    src/extractor/pt_extractor.cpp
-    src/extractor/disassembler.cpp)
+    src/extractor/pt_extractor.cpp)
 
 set(CONVERTER_SOURCES
     src/converter/main.cpp

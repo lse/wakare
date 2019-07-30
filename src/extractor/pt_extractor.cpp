@@ -4,15 +4,81 @@
 #include <map>
 #include <cstdint>
 #include <intel-pt.h>
+#include <capstone/capstone.h>
 
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "extractor/pt_extractor.hh"
-#include "extractor/disassembler.hh"
 #include "extractor/perf_file.hh"
 #include "trace.pb.h"
 
 using namespace google::protobuf::io;
+
+static int extract_branch(csh handle, struct pt_insn& pt_ins, CodeBranch& branch)
+{
+    cs_insn* cap_ins;
+
+    // Disassembly
+    size_t count = cs_disasm(handle, pt_ins.raw, sizeof(pt_ins.raw),
+            pt_ins.ip, 1, &cap_ins);
+
+    if(count < 1)
+        return -1;
+
+    // Parsing
+    cs_detail* d = cap_ins->detail;
+    cs_x86_op ins_arg;
+
+    for(int j = 0; j < d->groups_count; j++) {
+        switch(d->groups[j]) {
+            case X86_GRP_JUMP:
+                branch.address = cap_ins->address;
+
+                // A jump has at least an argument
+                ins_arg = d->x86.operands[0];
+
+                if(ins_arg.type == X86_OP_IMM) {
+                    branch.ok = ins_arg.imm;
+
+                    if(cap_ins->id == X86_INS_JMP) {
+                        branch.type = CodeBranchType::Jump;
+                    } else {
+                        // Conditional branch
+                        branch.type = CodeBranchType::CondJump;
+                        branch.fail = cap_ins->address + cap_ins->size;
+                    }
+                } else {
+                    branch.type = CodeBranchType::IndJump;
+                }
+
+                break;
+            case X86_GRP_RET:
+                branch.address = cap_ins->address;
+                branch.type = CodeBranchType::Return;
+                break;
+            case X86_GRP_CALL:
+                branch.address = cap_ins->address;
+
+                ins_arg = d->x86.operands[0];
+
+                if(ins_arg.type == X86_OP_IMM) {
+                    branch.type = CodeBranchType::Call;
+                    branch.ok = ins_arg.imm;
+                } else {
+                    branch.type = CodeBranchType::IndCall;
+                }
+
+                break;
+        }
+    }
+
+    cs_free(cap_ins, 1);
+
+    if(branch.type == CodeBranchType::Invalid)
+        return -1;
+
+    return 0;
+}
 
 static std::string get_realpath(std::string path)
 {
@@ -41,32 +107,6 @@ static int setup_perf(PerfFile& file, std::string perf_path)
 
     if(file.maps.size() == 0) {
         std::cerr << perf_path << " does not contain any mappings\n";
-        return -1;
-    }
-
-    return 0;
-}
-
-static int setup_disasm(Disassembler& dis, PerfFile& file, std::string binpath)
-{
-    std::string path = get_realpath(binpath);
-
-    if(path.size() == 0) {
-        std::cerr << "Cannot find file: " << binpath << "\n";
-        return -1;
-    }
-
-    bool found = false;
-
-    for(auto& map : file.maps) {
-        if(map.filename == path) {
-            dis.add_page(path, map.start, map.size, map.offset);
-            found = true;
-        }
-    }
-
-    if(!found) {
-        std::cerr << "Could not find any mappings for the given binary\n";
         return -1;
     }
 
@@ -122,7 +162,7 @@ static void log_pt_err(struct pt_insn_decoder* dec, enum pt_error_code err)
     uint64_t offset = 0;
     pt_insn_get_offset(dec, &offset);
 
-    std::cerr << "Critical error at offset ";
+    std::cerr << "Error at offset ";
     std::cerr << "0x" << std::hex << offset << " ";
     std::cerr << pt_errstr(err) << "\n";
 }
@@ -158,7 +198,7 @@ static int get_next_instruction(struct pt_insn_decoder* ins_dec,
 
         if(status == -pte_eos) {
             std::cerr << "No new PSB\n";
-            return -1;
+            return status;
         }
 
         if(status < 0) {
@@ -177,13 +217,19 @@ int pt_process(std::string perf_path, std::string binary_path,
 {
     // Setup main objects
     PerfFile perf_file;
-    Disassembler disas;
     struct pt_insn_decoder* ins_dec = nullptr;
+    csh dis_handle;
+    cs_err err;
+
+    // Initialize capstone
+    if((err = cs_open(CS_ARCH_X86, CS_MODE_64, &dis_handle)) != CS_ERR_OK ) {
+        std::cout << "Capstone error: " << cs_strerror(err) << "\n";
+        return 1;
+    }
+
+    cs_option(dis_handle, CS_OPT_DETAIL, CS_OPT_ON);
 
     if(setup_perf(perf_file, perf_path) < 0)
-        return 1;
-
-    if(setup_disasm(disas, perf_file, binary_path) < 0)
         return 1;
     
     if(setup_pt(&ins_dec, perf_file) < 0)
@@ -240,15 +286,11 @@ int pt_process(std::string perf_path, std::string binary_path,
         }
 
         for(;;) {
+            // Get next instruction already handles the pte_nomap case
             status = get_next_instruction(ins_dec, &ins, status);
 
             if(status < 0)
                 break;
-
-            if(!disas.is_mapped(ins.ip)) {
-                prev_branch.type = CodeBranchType::Invalid;
-                continue;
-            }
 
             if(prev_branch.type != CodeBranchType::Invalid) {
                 trace::BranchEvent* evt = nullptr;
@@ -302,16 +344,19 @@ int pt_process(std::string perf_path, std::string binary_path,
             if(ins.iclass == ptic_jump || 
                     ins.iclass == ptic_cond_jump ||
                     ins.iclass == ptic_call) {
-                prev_branch = disas.get_next_branch(ins.ip);
+
+                if(extract_branch(dis_handle, ins, prev_branch) < 0) {
+                    std::cout << "Could not disassemble branch at address: 0x"
+                        << std::hex << ins.ip << "\n";
+                }
             }
         }
 
         if(status == -pte_eos)
             break;
 
-        if(status < 0) {
+        if(status < 0)
             log_pt_err(ins_dec, (pt_error_code)-status);
-        }
     }
 
     // Same flushing trick
