@@ -39,10 +39,10 @@ is the "converter", it uses the protobuf messages and converts them to a form mo
 for other programs to use.
 
 ```
-                                                                         _ text
-                  +-----------+                         +-----------+   /
-input trace ----> | extractor | --> protobuf stream --> | converter | --
-                  +-----------+                         +-----------+   \_ sqlite
+                                                                                       _ text
+                  +------------------+                         +------------------+   /
+input trace ----> | wakare-extractor | --> protobuf stream --> | wakare-converter | --
+                  +------------------+                         +------------------+   \_ sqlite
 ```
 
 - Supported input formats:

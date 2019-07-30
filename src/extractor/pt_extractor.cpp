@@ -381,6 +381,8 @@ int pt_process(std::string perf_path, std::string binary_path,
     pt_image_free(pt_insn_get_image(ins_dec));
     pt_insn_free_decoder(ins_dec);
 
+    cs_close(&dis_handle);
+
     if(status != -pte_eos)
         return 1;
 

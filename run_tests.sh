@@ -44,7 +44,7 @@ do
         fi
 
         # Testing the extractor
-        OUTPUT=$(./extractor -binary $PROG_PATH 2>&1)
+        OUTPUT=$(./wakare-extractor -binary $PROG_PATH 2>&1)
 
         if [ $? -ne 0 ]; then
             echo -e "[$FAIL_TXT] Extractor"
@@ -56,7 +56,7 @@ do
         echo -e "[$OK_TXT] Extractor"
 
         # Testing the converter in text mode
-        OUTPUT=$(./converter -mode text 2>&1)
+        OUTPUT=$(./wakare-converter -mode text 2>&1)
 
         if [ $? -ne 0 ]; then
             echo -e "[$FAIL_TXT] Converter (txt)"
@@ -68,7 +68,7 @@ do
         mv trace.out "./samples/$folder/trace_$mode.txt"
 
         # Testing the converter in sqlite mode
-        OUTPUT=$(./converter -mode sqlite 2>&1)
+        OUTPUT=$(./wakare-converter -mode sqlite 2>&1)
 
         if [ $? -ne 0 ]; then
             echo -e "[$FAIL_TXT] Converter (sqlite)"

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0)
-project(tracing)
+project(wakare)
 
 include(FindProtobuf)
 
@@ -26,34 +26,34 @@ set(CONVERTER_SOURCES
 
 add_subdirectory(proto)
 
-add_executable(extractor
+add_executable(wakare-extractor
     ${EXTRACTOR_SOURCES}
     ${PROTO_SRCS}
     ${PROTO_HDRS})
 
-add_executable(converter
+add_executable(wakare-converter
     ${CONVERTER_SOURCES}
     ${PROTO_SRCS}
     ${PROTO_HDRS})
 
-target_include_directories(extractor
+target_include_directories(wakare-extractor
     PUBLIC
     include
     proto)
 
-target_include_directories(converter
+target_include_directories(wakare-converter
     PUBLIC
     include
     proto)
 
-target_link_libraries(extractor
+target_link_libraries(wakare-extractor
     proto
     "${LIB_IPT}"
     "${LIB_CAPSTONE}"
     "${LIB_GFLAGS}"
     "${PROTOBUF_LIBRARY}")
 
-target_link_libraries(converter
+target_link_libraries(wakare-converter
     proto
     "${PROTOBUF_LIBRARY}"
     "${LIB_GFLAGS}"
