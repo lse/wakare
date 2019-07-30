@@ -3,7 +3,7 @@
 OK_TXT="\e[1;32mOK\e[1;0m"
 FAIL_TXT="\e[1;31mFAIL\e[1;0m"
 
-SAMPLES=(indirect-calls loop-intensive loop mini-vm multiple singleblock)
+SAMPLES=(indirect-calls loop-intensive loop mini-vm multiple singleblock hex multi-small-calls)
 MODES=(pie nopie)
 
 # Checking for processor trace support
@@ -52,6 +52,7 @@ do
             continue
         fi
 
+        rm perf.data
         echo -e "[$OK_TXT] Extractor"
 
         # Testing the converter in text mode
