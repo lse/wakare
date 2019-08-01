@@ -8,12 +8,28 @@ from binaryninjaui import DockContextHandler, UIActionHandler
 from binaryninja.highlight import HighlightColor, HighlightStandardColor
 
 def _name_from_address(bv, address):
-    fns = bv.get_functions_containing(address)
+    bbs = bv.get_basic_blocks_at(address)
 
-    if not fns:
+    if not bbs:
         return "(unknown)"
 
-    return fns[0].name
+    bb = bbs[0]
+    symbol = bv.get_symbol_at(bb.start)
+
+    # If we are in a function we take the name. Otherwise we have a lone basic block (Some C++ virtual function)
+    if bb.function:
+        symbol = bv.get_symbol_at(bb.function.start)
+
+        if not symbol:
+            return bb.function.name
+    else:
+        print("(not symbol) BB at 0x{:x} -> {}".format(bb.start, symbol))
+        return "(unknown)"
+
+    if symbol.full_name:
+        return symbol.full_name
+
+    return symbol.name
 
 class XrefsDialog(QDialog):
     def __init__(self, branch_address, bv, db):
@@ -25,7 +41,7 @@ class XrefsDialog(QDialog):
         self.xref_list = db.get_xrefs_from(branch_address)
         
         # Init widgets
-        self.setWindowTitle("Branch xrefs")
+        self.setWindowTitle("Xrefs for branch at 0x{:x}".format(branch_address))
         self.xref_table = QTableWidget(len(self.xref_list), 3)
         self.close_button = QPushButton("Close")
 
@@ -36,7 +52,7 @@ class XrefsDialog(QDialog):
         for i, e in enumerate(self.xref_list):
             address_item = QTableWidgetItem("0x{:x}".format(e[0]))
             hitcount_item = QTableWidgetItem("{}".format(e[1]))
-            name_item = QTableWidgetItem(_name_from_address(bv, branch_address))
+            name_item = QTableWidgetItem(_name_from_address(bv, e[0]))
             
             address_item.setFlags(Qt.ItemIsEnabled)
             hitcount_item.setFlags(Qt.ItemIsEditable)
