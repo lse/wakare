@@ -104,7 +104,7 @@ class TraceDB:
         c = self.sqlite_handle.cursor()
         hitcounts = []
         
-        for address, hitcount in c.execute("SELECT address,hitcount FROM hitcounts ORDER BY hitcount;"):
+        for address, hitcount in c.execute("SELECT address,hitcount FROM hitcounts ORDER BY hitcount DESC;"):
             hitcounts.append((self._pie_to_phys(address), hitcount))
 
         c.close()
