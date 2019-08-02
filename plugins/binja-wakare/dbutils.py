@@ -1,8 +1,10 @@
 import sqlite3
 import os
 
+
 class TraceDBError(Exception):
     pass
+
 
 class TraceDB:
     def __init__(self, bv, dbpath):
@@ -16,7 +18,7 @@ class TraceDB:
         self.exec_off = -1
 
         if len(bv.segments) == 0:
-            raise DBException("No segments in file")
+            raise TraceDBError("No segments in file")
 
         if bv.segments[0].start == 0:
             self.should_translate = True
@@ -28,7 +30,7 @@ class TraceDB:
                     break
 
             if self.exec_off < 0:
-                raise DBException("Could not find executable segment")
+                raise TraceDBError("Could not find executable segment")
 
         # Loading the db
         self.branch_count, self.mapping_count, self.hitcount_count = self._load(dbpath)
@@ -44,7 +46,7 @@ class TraceDB:
                     break
 
             if self.map_low < 0:
-                raise DBException("Could not find matching segment in trace")
+                raise TraceDBError("Could not find matching segment in trace")
 
     def _load(self, dbpath):
         self.sqlite_handle = sqlite3.connect(dbpath)
@@ -86,7 +88,7 @@ class TraceDB:
     def get_xrefs_from(self, addr):
         c = self.sqlite_handle.cursor()
         xrefs = {}
-        
+
         for xref in c.execute("SELECT destination FROM branches WHERE source=?;", (self._phys_to_pie(addr),)):
             xref = self._pie_to_phys(xref[0])
 
@@ -103,7 +105,7 @@ class TraceDB:
     def get_hitcounts(self):
         c = self.sqlite_handle.cursor()
         hitcounts = []
-        
+
         for address, hitcount in c.execute("SELECT address,hitcount FROM hitcounts ORDER BY hitcount DESC;"):
             hitcounts.append((self._pie_to_phys(address), hitcount))
 
@@ -119,4 +121,3 @@ class TraceDB:
             mappings.append((filename, start, end))
 
         return mappings
-

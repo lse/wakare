@@ -1,11 +1,11 @@
 import math
 
-from .dbutils import TraceDB
-from PySide2.QtWidgets import QDialog, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QSizePolicy, QCheckBox, QGroupBox
+from PySide2.QtWidgets import QDialog, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QCheckBox, QGroupBox
 from PySide2.QtCore import Qt
 
 from binaryninjaui import DockContextHandler, UIActionHandler
 from binaryninja.highlight import HighlightColor, HighlightStandardColor
+
 
 def _name_from_address(bv, address):
     bbs = bv.get_basic_blocks_at(address)
@@ -31,6 +31,7 @@ def _name_from_address(bv, address):
 
     return symbol.name
 
+
 class XrefsDialog(QDialog):
     def __init__(self, branch_address, bv, db):
         super(XrefsDialog, self).__init__()
@@ -39,7 +40,7 @@ class XrefsDialog(QDialog):
         self.bv = bv
         self.branch_address = branch_address
         self.xref_list = db.get_xrefs_from(branch_address)
-        
+
         # Init widgets
         self.setWindowTitle("Xrefs for branch at 0x{:x}".format(branch_address))
         self.xref_table = QTableWidget(len(self.xref_list), 3)
@@ -53,7 +54,7 @@ class XrefsDialog(QDialog):
             address_item = QTableWidgetItem("0x{:x}".format(e[0]))
             hitcount_item = QTableWidgetItem("{}".format(e[1]))
             name_item = QTableWidgetItem(_name_from_address(bv, e[0]))
-            
+
             address_item.setFlags(Qt.ItemIsEnabled)
             hitcount_item.setFlags(Qt.ItemIsEditable)
             name_item.setFlags(Qt.ItemIsEditable)
@@ -76,12 +77,12 @@ class XrefsDialog(QDialog):
         self.setFixedWidth(self.xref_table.horizontalHeader().width())
 
     def _close_cb(self):
-        self.bv.navigate(self.bv.view, self.branch_address)
         self.close()
 
     def _table_cb(self, elem):
         addr = self.xref_list[elem.row()][0]
         self.bv.navigate(self.bv.view, addr)
+
 
 class BBViewerWidget(QWidget, DockContextHandler):
     PER_PAGE_COUNT = 50
@@ -124,7 +125,7 @@ class BBViewerWidget(QWidget, DockContextHandler):
 
         ascending_checkbox = QCheckBox("Sort ascending")
         highlight_checkbox = QCheckBox("Highlight basic blocks")
-        
+
         ascending_checkbox.stateChanged.connect(self._cb_ascending)
         highlight_checkbox.stateChanged.connect(self._cb_highlight)
 
@@ -161,7 +162,7 @@ class BBViewerWidget(QWidget, DockContextHandler):
     def _cb_ascending(self, elem):
         self.descending = not self.descending
         self.hitcounts = sorted(self.hitcounts, key=lambda a: a[1], reverse=self.descending)
-        self.current_page = 0;
+        self.current_page = 0
 
         self._render_nav_line()
         self._render_page()
