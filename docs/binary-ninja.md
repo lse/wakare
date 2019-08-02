@@ -5,7 +5,7 @@ binja-wakare is a binary ninja plugin providing tools to use the trace databases
 - Basic block listing
 - Basic block coloration
 - Branch target resolution (right click on calls/jumps)
-- Support for PIE executables
+- Supports PIE executables/traces
 
 ## Requirements
 - python 3
@@ -81,5 +81,5 @@ int main () {
 }
 ```
 
-If we load a trace database and try to get the xref from and indirect virtual call we get this:
+If we load a trace database and try to get the xref from an indirect virtual call we get this:
 ![wakare virtual call](assets/binja-cpp-refs.png)
