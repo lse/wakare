@@ -129,7 +129,7 @@ static int setup_pt(struct pt_insn_decoder** ins_dec, PerfFile& file)
     }
 
     struct pt_image* image = pt_image_alloc(nullptr);
-    
+
     if(!image) {
         std::cerr << "Could not allocate trace image\n";
         return -1;
@@ -137,7 +137,7 @@ static int setup_pt(struct pt_insn_decoder** ins_dec, PerfFile& file)
 
     for(auto& map : file.maps) {
         if(map.filename != "[vdso]") {
-            int err = pt_image_add_file(image, map.filename.c_str(), 
+            int err = pt_image_add_file(image, map.filename.c_str(),
                     map.offset, map.size, nullptr, map.start);
 
             if(err != 0) {
@@ -231,7 +231,7 @@ int pt_process(std::string perf_path, std::string binary_path,
 
     if(setup_perf(perf_file, perf_path) < 0)
         return 1;
-    
+
     if(setup_pt(&ins_dec, perf_file) < 0)
         return 1;
 
@@ -341,7 +341,7 @@ int pt_process(std::string perf_path, std::string binary_path,
             }
 
 
-            if(ins.iclass == ptic_jump || 
+            if(ins.iclass == ptic_jump ||
                     ins.iclass == ptic_cond_jump ||
                     ins.iclass == ptic_call) {
 
@@ -376,7 +376,7 @@ int pt_process(std::string perf_path, std::string binary_path,
 
     out_fstream.close();
     google::protobuf::ShutdownProtobufLibrary();
-    
+
     // pt cleanup
     pt_image_free(pt_insn_get_image(ins_dec));
     pt_insn_free_decoder(ins_dec);

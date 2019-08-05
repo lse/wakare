@@ -25,11 +25,11 @@ BRANCH_IL = [
 ]
 
 
-def print_error(title, message):
+def _print_error(title, message):
     show_message_box(title, message, icon=MessageBoxIcon.ErrorIcon)
 
 
-def is_branch(ins):
+def _is_branch(ins):
     for subins in ins.prefix_operands:
         if isinstance(subins, LowLevelILOperationAndSize) and subins.operation in BRANCH_IL:
             return True
@@ -37,7 +37,7 @@ def is_branch(ins):
     return False
 
 
-def get_llil_at(bv, addr):
+def _get_llil_at(bv, addr):
     """ Gets the low level il instruction at given vaddr """
     fns = bv.get_functions_containing(addr)
 
@@ -61,7 +61,7 @@ def db_required(func):
 
     def inner(*args, **kwargs):
         if not LOADED_DB:
-            print_error("Database Error", "No trace was loaded.Please open a trace database.")
+            _print_error("Database Error", "No trace was loaded.Please open a trace database.")
         else:
             func(*args, **kwargs)
 
@@ -99,10 +99,10 @@ def db_load(bv):
 
         show_message_box("Trace info", text)
     except sqlite3.Error as e:
-        print_error("Database error", "sqlite error: {}".format(e))
+        _print_error("Database error", "sqlite error: {}".format(e))
         LOADED_DB = None
     except TraceDBError as e:
-        print_error("Database error", "Trace init error: {}".format(e))
+        _print_error("Database error", "Loading error: {}".format(e))
         LOADED_DB = None
 
 
@@ -110,10 +110,10 @@ def db_load(bv):
 def display_branch_xrefs(bv, addr):
     global LOADED_DB
 
-    ins = get_llil_at(bv, addr)
+    ins = _get_llil_at(bv, addr)
 
-    if not is_branch(ins):
-        print_error("Code error", "This instruction is not a branch")
+    if not _is_branch(ins):
+        _print_error("Code error", "This instruction is not a branch")
         return
 
     dialog = XrefsDialog(addr, bv, LOADED_DB)
@@ -139,7 +139,7 @@ def display_bb_viewer(bv):
     dock_handler.addDockWidget(dock_widget, Qt.RightDockWidgetArea, Qt.Vertical, True)
 
 
-PluginCommand.register("Execution trace\\Load trace database", "Loads a trace database", db_load)
-PluginCommand.register_for_address("Execution trace\\Branch xrefs from", "Displays xrefs from a branch", display_branch_xrefs)
+PluginCommand.register("Wakare\\Load trace database", "Loads a trace database", db_load)
+PluginCommand.register_for_address("Wakare\\Branch xrefs from", "Displays xrefs from a branch", display_branch_xrefs)
 
-PluginCommand.register("Execution trace\\Show basic block viewer", "Displays information about basic blocks", display_bb_viewer)
+PluginCommand.register("Wakare\\Show basic block viewer", "Displays information about basic blocks", display_bb_viewer)

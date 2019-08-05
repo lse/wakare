@@ -1,10 +1,15 @@
 import math
+import sqlite3
 
 from PySide2.QtWidgets import QDialog, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QCheckBox, QGroupBox
 from PySide2.QtCore import Qt
 
 from binaryninjaui import DockContextHandler, UIActionHandler
 from binaryninja.highlight import HighlightColor, HighlightStandardColor
+from binaryninja.enums import MessageBoxIcon
+from binaryninja.interaction import show_message_box, get_open_filename_input
+
+from .dbutils import TraceDB, TraceDBError
 
 
 def _name_from_address(bv, address):
@@ -30,6 +35,27 @@ def _name_from_address(bv, address):
         return symbol.full_name
 
     return symbol.name
+
+
+def _print_error(title, msg):
+    show_message_box(title, msg, icon=MessageBoxIcon.ErrorIcon)
+
+
+def _load_db(bv):
+    path = get_open_filename_input("Select trace database")
+
+    if not path:
+        return None
+
+    path = path.decode("UTF-8")
+
+    try:
+        db = TraceDB(bv, path)
+        return db
+    except TraceDBError as e:
+        _print_error("Database error", "Loading error: {}".format(e))
+    except sqlite3.Error as e:
+        _print_error("Database error", "sqlite error: {}".format(e))
 
 
 class XrefsDialog(QDialog):
@@ -133,6 +159,24 @@ class BBViewerWidget(QWidget, DockContextHandler):
         optionslayout.addWidget(highlight_checkbox)
         optionsbox.setLayout(optionslayout)
 
+        # Diffing buttons
+        diffinglayout = QHBoxLayout()
+        diffingoptions = QGroupBox("Diffing")
+
+        diffing_reset_button = QPushButton("Reset")
+        diffing_diff_button = QPushButton("Difference")
+        diffing_inter_button = QPushButton("Intersection")
+
+        diffing_reset_button.clicked.connect(self._cb_diff_reset)
+        diffing_diff_button.clicked.connect(self._cb_diff_diff)
+        diffing_inter_button.clicked.connect(self._cb_diff_inter)
+
+        diffinglayout.addWidget(diffing_diff_button)
+        diffinglayout.addWidget(diffing_inter_button)
+        diffinglayout.addWidget(diffing_reset_button)
+
+        diffingoptions.setLayout(diffinglayout)
+
         # Bottom buttons for page change
         prevnextlayout = QHBoxLayout()
         self.back_button = QPushButton("<")
@@ -151,6 +195,7 @@ class BBViewerWidget(QWidget, DockContextHandler):
         vlayout.addWidget(self.hitcount_counter)
         vlayout.addWidget(self.hit_table)
         vlayout.addWidget(optionsbox)
+        vlayout.addWidget(diffingoptions)
         vlayout.addLayout(prevnextlayout)
 
         self.setLayout(vlayout)
@@ -182,45 +227,70 @@ class BBViewerWidget(QWidget, DockContextHandler):
         self._render_page()
 
     def _cb_highlight(self, elem):
-        def delete_hitcount_str(input_str):
-            if "(hitcount: " not in input_str:
-                return input_str
-
-            chk = input_str[input_str.find("(hitcount: "):]
-
-            if ")\n" not in input_str:
-                return input_str
-
-            chk = chk[:input_str.find(")\n")+2]
-
-            return input_str.replace(chk, "")
-
-        # (0, 255, 106)
         self.highlight = not self.highlight
-        colorHighlight = HighlightColor(red=0, green=255, blue=106)
+        self._bb_highlight(self.highlight)
 
-        for bbaddr, bbhitcount in self.hitcounts:
-            bbs = self.bv.get_basic_blocks_at(bbaddr)
+    def _cb_diff_reset(self, item):
+        if self.highlight:
+            self._bb_highlight(False)
 
-            if not bbs:
-                print("Could not find basic block at address: 0x{:x}".format(bbaddr))
-                continue
+        self.hitcounts = [e for e in self.orig_hitcounts]
 
-            bb = bbs[0]
-            fn = bb.function
+        if self.highlight:
+            self._bb_highlight(True)
 
-            if not fn:
-                print("Could not find function containing block at address: 0x{:x}".format(bbaddr))
-                continue
+        self.current_page = 0
+        self.hitcount_counter.setText("Basic block count: {}".format(len(self.hitcounts)))
+        self._render_nav_line()
+        self._render_page()
 
-            cur_comment = delete_hitcount_str(fn.get_comment_at(bbaddr))
+    def _cb_diff_diff(self, item):
+        new_db = _load_db(self.bv)
 
-            if self.highlight:
-                bb.set_user_highlight(colorHighlight)
-                fn.set_comment_at(bbaddr, "(hitcount: {})\n".format(bbhitcount) + cur_comment)
-            else:
-                bb.set_user_highlight(HighlightStandardColor.NoHighlightColor)
-                fn.set_comment_at(bbaddr, cur_comment)
+        if not new_db:
+            return
+
+        source_bbs = set([e[0] for e in self.hitcounts])
+        new_bbs = set([e[0] for e in new_db.get_hitcounts()])
+        result_bbs = source_bbs - new_bbs
+
+        if self.highlight:
+            self._bb_highlight(False)
+
+        previous_count = len(self.hitcounts)
+        self.hitcounts = list(filter(lambda e: e[0] in result_bbs, self.hitcounts))
+        self.hitcount_counter.setText("Basic block count: {} (previously {})".format(len(self.hitcounts), previous_count))
+
+        if self.highlight:
+            self._bb_highlight(True)
+
+        self.current_page = 0
+        self._render_nav_line()
+        self._render_page()
+
+    def _cb_diff_inter(self, item):
+        new_db = _load_db(self.bv)
+
+        if not new_db:
+            return
+
+        source_bbs = set([e[0] for e in self.hitcounts])
+        new_bbs = set([e[0] for e in new_db.get_hitcounts()])
+        result_bbs = source_bbs & new_bbs
+
+        if self.highlight:
+            self._bb_highlight(False)
+
+        previous_count = len(self.hitcounts)
+        self.hitcounts = list(filter(lambda e: e[0] in result_bbs, self.hitcounts))
+        self.hitcount_counter.setText("Basic block count: {} (previously {})".format(len(self.hitcounts), previous_count))
+
+        if self.highlight:
+            self._bb_highlight(True)
+
+        self.current_page = 0
+        self._render_nav_line()
+        self._render_page()
 
     def _render_nav_line(self):
         max_pages = math.ceil(len(self.hitcounts) / BBViewerWidget.PER_PAGE_COUNT)
@@ -254,3 +324,43 @@ class BBViewerWidget(QWidget, DockContextHandler):
             self.hit_table.setItem(i, 0, address_item)
             self.hit_table.setItem(i, 1, hitcount_item)
             self.hit_table.setItem(i, 2, name_item)
+
+    def _bb_highlight(self, highlight):
+        def delete_hitcount_str(input_str):
+            if "(hitcount: " not in input_str:
+                return input_str
+
+            chk = input_str[input_str.find("(hitcount: "):]
+
+            if ")\n" not in input_str:
+                return input_str
+
+            chk = chk[:input_str.find(")\n")+2]
+
+            return input_str.replace(chk, "")
+
+        # (0, 255, 106)
+        colorHighlight = HighlightColor(red=0, green=255, blue=106)
+
+        for bbaddr, bbhitcount in self.hitcounts:
+            bbs = self.bv.get_basic_blocks_at(bbaddr)
+
+            if not bbs:
+                print("Could not find basic block at address: 0x{:x}".format(bbaddr))
+                continue
+
+            bb = bbs[0]
+            fn = bb.function
+
+            if not fn:
+                print("Could not find function containing block at address: 0x{:x}".format(bbaddr))
+                continue
+
+            cur_comment = delete_hitcount_str(fn.get_comment_at(bbaddr))
+
+            if highlight:
+                bb.set_user_highlight(colorHighlight)
+                fn.set_comment_at(bbaddr, "(hitcount: {})\n".format(bbhitcount) + cur_comment)
+            else:
+                bb.set_user_highlight(HighlightStandardColor.NoHighlightColor)
+                fn.set_comment_at(bbaddr, cur_comment)
