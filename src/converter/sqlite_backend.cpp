@@ -23,7 +23,7 @@ bool SqliteBackend::setup(std::string path)
         std::cerr << "Error: " << sqlite3_errmsg(sqlite_handle_) << "\n";
         return false;
     }
-    
+
     // TODO: Add error handling if database exists?
     int err = 0;
 
@@ -93,7 +93,7 @@ void SqliteBackend::handle_mapping(trace::MappingEvent* mapping)
     sqlite3_bind_text(mapping_ins_handle_, 2, mapping->filename().c_str(),
             -1, NULL);
     sqlite3_bind_int64(mapping_ins_handle_, 3, mapping->start());
-    sqlite3_bind_int64(mapping_ins_handle_, 4, 
+    sqlite3_bind_int64(mapping_ins_handle_, 4,
             mapping->start() + mapping->size());
 
     if(sqlite3_step(mapping_ins_handle_) != SQLITE_DONE) {
