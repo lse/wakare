@@ -30,6 +30,8 @@ static const char* usage[] = {
     "\\wkri         : Displays information about the loaded database",
     "\\wkrx         : Displays the xrefs from the current address",
     "\\wkrbl        : Displays the list of basic blocks",
+    "\\wkrbh        : Adds hitcounts in basic blocks comments",
+    "\\wkrbc        : Cleans the hitcount comments",
     "\\wkrdd [file] : Does a difference based diffing with another trace",
     "\\wkrdi [file] : Does an intersection based diffing with another trace",
     "\\wkrdr        : Resets the database to its original state",
@@ -55,7 +57,7 @@ static RList* get_mappings(sqlite3* handle)
     sqlite3_stmt* query = NULL;
     RList* mapping_list = NULL;
 
-    if(sqlite3_prepare_v2(handle, "SELECT * from mappings;", -1, &query, 0) != SQLITE_OK) {
+    if(sqlite3_prepare_v2(handle, "SELECT * FROM mappings;", -1, &query, 0) != SQLITE_OK) {
         r_cons_printf("sqlite3: %s\n", sqlite3_errmsg(handle));
         return NULL;
     }
@@ -89,7 +91,7 @@ static RList* get_hitcounts(sqlite3* handle)
     sqlite3_stmt* query = NULL;
     RList* hitcount_list = NULL;
 
-    if(sqlite3_prepare_v2(handle, "SELECT * from hitcounts ORDER BY hitcount DESC;", -1, &query, 0) != SQLITE_OK) {
+    if(sqlite3_prepare_v2(handle, "SELECT * FROM hitcounts ORDER BY hitcount DESC;", -1, &query, 0) != SQLITE_OK) {
         r_cons_printf("sqlite3: %s\n", sqlite3_errmsg(handle));
         return NULL;
     }
@@ -239,6 +241,8 @@ static void cmd_wkro(RCore* core, const char* filename)
     }
 
     tracedb_handle = handle;
+    r_cons_printf("Trace database successfully loaded\n");
+
     return;
 
 cleanup:
@@ -248,36 +252,94 @@ cleanup:
 // wkri: Displays information about the currently loaded trace database
 static void cmd_wkri()
 {
-    if(tracedb_handle) {
-        int branches_count = sql_count_rows(tracedb_handle, "branches");
-        int hitcounts_count = sql_count_rows(tracedb_handle, "hitcounts");
-        int mappings_count = sql_count_rows(tracedb_handle, "mappings");
+    if(tracedb_handle == NULL) {
+        r_cons_printf("No database was loaded\n");
+        return;
+    }
 
-        RList* mappings = get_mappings(tracedb_handle);
+    int branches_count = sql_count_rows(tracedb_handle, "branches");
+    int hitcounts_count = sql_count_rows(tracedb_handle, "hitcounts");
+    int mappings_count = sql_count_rows(tracedb_handle, "mappings");
 
-        r_cons_printf("Branches     : %i\n", branches_count);
-        r_cons_printf("Basic blocks : %i\n", hitcounts_count);
-        r_cons_printf("Mappings     : %i\n", mappings_count);
-        r_cons_printf("----- Mapping list -----\n");
+    RList* mappings = get_mappings(tracedb_handle);
 
-        RListIter* iter;
-        wkr_mapping* map;
+    r_cons_printf("Branches     : %i\n", branches_count);
+    r_cons_printf("Basic blocks : %i\n", hitcounts_count);
+    r_cons_printf("Mappings     : %i\n", mappings_count);
+    r_cons_printf("----- Mapping list -----\n");
 
-        r_list_foreach(mappings, iter, map) {
-            r_cons_printf("0x%lx - 0x%lx:  %s\n",
-                    map->from, map->to, map->name);
-        }
+    RListIter* iter;
+    wkr_mapping* map;
 
-        r_list_free(mappings);
-    } else {
-        r_cons_printf("No trace database loaded\n");
+    r_list_foreach(mappings, iter, map) {
+        r_cons_printf("0x%lx - 0x%lx:  %s\n",
+                map->from, map->to, map->name);
     }
 }
 
 // wkrx: Displays branch xrefs from the current address
 static void cmd_wkrx(RCore* core)
 {
-    r_cons_printf("offset: 0x%llx\n", core->offset);
+    if(tracedb_handle == NULL) {
+        r_cons_printf("No database was loaded\n");
+        return;
+    }
+
+    sqlite3_stmt* query = NULL;
+
+    if(sqlite3_prepare_v2(tracedb_handle, "SELECT * FROM branches WHERE source=?1;",
+                -1, &query, 0) != SQLITE_OK) {
+        r_cons_printf("sqlite3: %s\n", sqlite3_errmsg(tracedb_handle));
+        return;
+    }
+
+    if(sqlite3_bind_int64(query, 1, phys_to_pie(core->offset)) != SQLITE_OK) {
+        r_cons_printf("sqlite3: %s\n", sqlite3_errmsg(tracedb_handle));
+        return;
+    }
+
+    int err = 0;
+    RList* xref_list = r_list_new();
+    RListIter* iter;
+    wkr_hitcount* it_hitcount;
+
+    while((err = sqlite3_step(query)) != SQLITE_DONE) {
+        if(err != SQLITE_ROW) {
+            r_cons_printf("sqlite3: %s\n", sqlite3_errmsg(tracedb_handle));
+            break;
+        }
+
+        ut64 target = pie_to_phys(sqlite3_column_int64(query, 3));
+        wkr_hitcount* hit = NULL;
+
+        r_list_foreach(xref_list, iter, it_hitcount) {
+            if(it_hitcount->address == target) {
+                hit = it_hitcount;
+                break;
+            }
+        }
+
+        if(hit) {
+            hit->count++;
+        } else {
+            hit = R_NEW0(wkr_hitcount);
+            hit->address = target;
+            hit->count = 1;
+            r_list_append(xref_list, hit);
+        }
+    }
+
+    sqlite3_finalize(query);
+
+    // Printing the result
+    r_cons_printf("--- Found %i xrefs from 0x%lx ---\n",
+            r_list_length(xref_list), core->offset);
+
+    r_list_foreach(xref_list, iter, it_hitcount) {
+        r_cons_printf("0x%lx: %u\n", it_hitcount->address, it_hitcount->count);
+    }
+
+    r_list_free(xref_list);
 }
 
 // wkrbb: Displays the list of basic blocks
@@ -294,6 +356,55 @@ static void cmd_wkrbl()
     // TODO: Add function name resolution
     r_list_foreach(bb_list, iter, hit) {
         r_cons_printf("0x%lx: %lu\n", pie_to_phys(hit->address), hit->count);
+    }
+}
+
+// wkrbh: Adds comments to basic blocks specifying their hitcount
+static void cmd_wkrbh(RCore* core)
+{
+    if(tracedb_handle == NULL) {
+        r_cons_printf("No database was loaded\n");
+        return;
+    }
+
+    RList* bbs = get_hitcounts(tracedb_handle);
+
+    if(bbs == NULL)
+        return;
+
+    RListIter* iter;
+    wkr_hitcount* hit;
+
+    // TODO: Handle overlapping comments
+    r_list_foreach(bbs, iter, hit) {
+        char* cmt = r_str_newf("(hitcount: %d)", hit->count);
+        r_meta_set_string(core->anal, R_META_TYPE_COMMENT,
+                pie_to_phys(hit->address), cmt);
+        free(cmt);
+    }
+
+    r_list_free(bbs);
+}
+
+static void cmd_wkrbc(RCore* core)
+{
+    if(tracedb_handle == NULL) {
+        r_cons_printf("No database was loaded\n");
+        return;
+    }
+
+    RList* bbs = get_hitcounts(tracedb_handle);
+
+    if(bbs == NULL)
+        return;
+
+    RListIter* iter;
+    wkr_hitcount* hit;
+
+    // TODO: Handle overlapping comments
+    r_list_foreach(bbs, iter, hit) {
+        r_meta_del(core->anal, R_META_TYPE_COMMENT,
+                pie_to_phys(hit->address), 1);
     }
 }
 
@@ -332,10 +443,19 @@ static int cmd_handler(void* user, const char* input)
             }
             break;
         case 'b':
-            if(input[5] != 'l') {
-                print_usage();
-            } else {
-                cmd_wkrbl();
+            switch(input[5]) {
+                case 'l':
+                    cmd_wkrbl();
+                    break;
+                case 'h':
+                    cmd_wkrbh(core);
+                    break;
+                case 'c':
+                    cmd_wkrbc(core);
+                    break;
+                default:
+                    print_usage();
+                    break;
             }
             break;
         default:
