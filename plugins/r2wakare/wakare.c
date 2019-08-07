@@ -26,23 +26,54 @@ static void print_usage()
         r_cons_printf("%s\n", usage[i]);
 }
 
+// RListComparator for list of basic blocks (wkr_hitcount)
+static int bb_hitcount_cmp_dec(const void* a, const void* b)
+{
+    wkr_hitcount* am = (wkr_hitcount*)a;
+    wkr_hitcount* bm = (wkr_hitcount*)b;
+
+    if(am->count > bm->count) {
+        return -1;
+    } else if(am->count < bm->count){
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+static int bb_address_cmd_inc(const void* a, const void* b)
+{
+    wkr_hitcount* am = (wkr_hitcount*)a;
+    wkr_hitcount* bm = (wkr_hitcount*)b;
+
+    if(am->address > bm->address) {
+        return 1;
+    } else if(am->address < bm->address) {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
 // wkro: Opens a trace database
 static void cmd_wkro(RCore* core, const char* filename)
 {
     wkr_err err = wkr_db_open(&tracedb, core, filename);
 
     if(err != WKR_OK) {
-        wkr_db_close(&tracedb);
         r_cons_printf("Error while opening database: %s\n", wkr_db_errmsg(&tracedb, err));
+        wkr_db_close(&tracedb);
         return;
     }
 
     if((err = wkr_db_bbs(&tracedb, &bb_list)) != WKR_OK) {
         bb_list = NULL;
-        wkr_db_close(&tracedb);
         r_cons_printf("Error while gettings basic blocks: %s\n", wkr_db_errmsg(&tracedb ,err));
+        wkr_db_close(&tracedb);
         return;
     }
+
+    r_list_sort(bb_list, bb_hitcount_cmp_dec);
 }
 
 // wkri: Displays information about the currently loaded trace database
@@ -135,7 +166,7 @@ static void cmd_wkrbl()
 
     // TODO: Add function name resolution
     r_list_foreach(bb_list, iter, hit) {
-        r_cons_printf("0x%lx: %lu\n", wkr_db_frompie(&tracedb, hit->address), hit->count);
+        r_cons_printf("0x%lx: %lu\n", hit->address, hit->count);
     }
 }
 
@@ -153,8 +184,7 @@ static void cmd_wkrbh(RCore* core)
     // TODO: Handle overlapping comments
     r_list_foreach(bb_list, iter, hit) {
         char* cmt = r_str_newf("(hitcount: %d)", hit->count);
-        r_meta_set_string(core->anal, R_META_TYPE_COMMENT,
-                wkr_db_frompie(&tracedb, hit->address), cmt);
+        r_meta_set_string(core->anal, R_META_TYPE_COMMENT, hit->address, cmt);
         free(cmt);
     }
 }
@@ -181,8 +211,7 @@ static void cmd_wkrbc(RCore* core)
 
     // TODO: Handle overlapping comments
     r_list_foreach(bbs, iter, hit) {
-        r_meta_del(core->anal, R_META_TYPE_COMMENT,
-                wkr_db_frompie(&tracedb, hit->address), 1);
+        r_meta_del(core->anal, R_META_TYPE_COMMENT, hit->address, 1);
     }
 
     r_list_free(bbs);
@@ -196,6 +225,8 @@ static void cmd_wkrdr()
         return;
     }
 
+    int old_length = r_list_length(bb_list);
+
     r_list_free(bb_list);
     bb_list = NULL;
     wkr_err err;
@@ -203,6 +234,150 @@ static void cmd_wkrdr()
     if((err = wkr_db_bbs(&tracedb, &bb_list)) != WKR_OK) {
         r_cons_printf("Could not get basic blocks: %s\n", wkr_db_errmsg(&tracedb, err));
     }
+
+    r_list_sort(bb_list, bb_hitcount_cmp_dec);
+
+    r_cons_printf("New basic block count %d (previously %d)\n",
+            r_list_length(bb_list), old_length);
+}
+
+// wkrdd: Difference diffing
+static void cmd_wkrdd(RCore* core, const char* filename)
+{
+    if(tracedb.handle == NULL) {
+        r_cons_printf("No database was loaded\n");
+        return;
+    }
+
+    wkr_db diffdb;
+    wkr_err err = wkr_db_open(&diffdb, core, filename);
+
+    if(err != WKR_OK) {
+        r_cons_printf("Could not open database for diffing: %s\n", wkr_db_errmsg(&diffdb, err));
+        wkr_db_close(&diffdb);
+        return;
+    }
+
+    RList* target_bb_list;
+
+    if((err = wkr_db_bbs(&diffdb, &target_bb_list)) != WKR_OK) {
+        r_cons_printf("Error while getting basic blocks from diff database: %s\n",
+                wkr_db_errmsg(&diffdb, err));
+        wkr_db_close(&diffdb);
+        return;
+    }
+
+    // Now we sort both the list by address for processing
+    r_list_sort(target_bb_list, bb_address_cmd_inc);
+    r_list_sort(bb_list, bb_address_cmd_inc);
+
+    RList* diffed_bb = r_list_new();
+    RListIter* source_it = r_list_iterator(bb_list);
+    RListIter* diff_it = r_list_iterator(target_bb_list);
+
+    while(source_it != NULL && diff_it != NULL) {
+        wkr_hitcount* src_hc = (wkr_hitcount*)source_it->data;
+        wkr_hitcount* diff_hc = (wkr_hitcount*)diff_it->data;
+
+        if(src_hc->address < diff_hc->address) {
+            wkr_hitcount* new_hc = R_NEW0(wkr_hitcount);
+            new_hc->address = src_hc->address;
+            new_hc->count = src_hc->count;
+            r_list_append(diffed_bb, new_hc);
+
+            source_it = source_it->n;
+        } else if(src_hc->address > diff_hc->address) {
+            diff_it = diff_it->n;
+        } else {
+            // They are the same so we skip them
+            source_it = source_it->n;
+            diff_it = diff_it->n;
+        }
+    }
+
+    // If there are remaining bbs we append them to the list
+    while(source_it != NULL) {
+        wkr_hitcount* src_hc = (wkr_hitcount*)source_it->data;
+        wkr_hitcount* new_hc = R_NEW0(wkr_hitcount);
+
+        new_hc->address = src_hc->address;
+        new_hc->count = src_hc->count;
+        r_list_append(diffed_bb, new_hc);
+
+        source_it = source_it->n;
+    }
+
+    r_cons_printf("New basic block count %d (previously %d)\n",
+            r_list_length(diffed_bb), r_list_length(bb_list));
+
+    r_list_sort(diffed_bb, bb_hitcount_cmp_dec);
+    r_list_free(bb_list);
+    r_list_free(target_bb_list);
+
+    bb_list = diffed_bb;
+}
+
+// wkrdi: Intersection diffing
+static void cmd_wkrdi(RCore* core, const char* filename)
+{
+    if(tracedb.handle == NULL) {
+        r_cons_printf("No database was loaded\n");
+        return;
+    }
+
+    wkr_db diffdb;
+    wkr_err err = wkr_db_open(&diffdb, core, filename);
+
+    if(err != WKR_OK) {
+        r_cons_printf("Could not open database for diffing: %s\n", wkr_db_errmsg(&diffdb, err));
+        wkr_db_close(&diffdb);
+        return;
+    }
+
+    RList* target_bb_list;
+
+    if((err = wkr_db_bbs(&diffdb, &target_bb_list)) != WKR_OK) {
+        r_cons_printf("Error while getting basic blocks from diff database: %s\n",
+                wkr_db_errmsg(&diffdb, err));
+        wkr_db_close(&diffdb);
+        return;
+    }
+
+    // Now we sort both the list by address for processing
+    r_list_sort(target_bb_list, bb_address_cmd_inc);
+    r_list_sort(bb_list, bb_address_cmd_inc);
+
+    RList* diffed_bb = r_list_new();
+    RListIter* source_it = r_list_iterator(bb_list);
+    RListIter* diff_it = r_list_iterator(target_bb_list);
+
+    while(source_it != NULL && diff_it != NULL) {
+        wkr_hitcount* src_hc = (wkr_hitcount*)source_it->data;
+        wkr_hitcount* diff_hc = (wkr_hitcount*)diff_it->data;
+
+        if(src_hc->address < diff_hc->address) {
+            source_it = source_it->n;
+        } else if(src_hc->address > diff_hc->address) {
+            diff_it = diff_it->n;
+        } else {
+            wkr_hitcount* new_hc = R_NEW0(wkr_hitcount);
+            new_hc->address = src_hc->address;
+            new_hc->count = src_hc->count;
+            r_list_append(diffed_bb, new_hc);
+
+            source_it = source_it->n;
+            diff_it = diff_it->n;
+        }
+    }
+
+    r_cons_printf("New basic block count %d (previously %d)\n",
+            r_list_length(diffed_bb), r_list_length(bb_list));
+
+    r_list_sort(diffed_bb, bb_hitcount_cmp_dec);
+    r_list_free(bb_list);
+    r_list_free(target_bb_list);
+
+    bb_list = diffed_bb;
 }
 
 static int cmd_handler(void* user, const char* input)
@@ -226,10 +401,10 @@ static int cmd_handler(void* user, const char* input)
         case 'd':
             switch(input[5]) {
                 case 'd':
-                    r_cons_printf("difference diffing\n");
+                    cmd_wkrdd(core, r_str_trim_ro(input + 6));
                     break;
                 case 'i':
-                    r_cons_printf("intersection diffing\n");
+                    cmd_wkrdi(core, r_str_trim_ro(input + 6));
                     break;
                 case 'r':
                     cmd_wkrdr();

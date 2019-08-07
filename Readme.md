@@ -55,6 +55,7 @@ For now the project has a few limitations:
 Plugins for disassemblers can be found in the ```plugins/``` folder.
 
 - [Binary ninja](docs/binary-ninja.md)
+- [Radare2](docs/radare2.md)
 
 ## Building
 All dependencies can be installed through your package manager of choice. The only exception is [libipt](https://github.com/intel/libipt) which needs to be built from source. Once all dependencies are installed you can build as follows:

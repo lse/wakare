@@ -38,7 +38,6 @@ wkr_err wkr_db_open(wkr_db* db, RCore* core, const char* filename)
 
     // Opening the db
     if(sqlite3_open_v2(filename, &db->handle, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
-        wkr_db_close(db);
         return WKR_SQLITE;
     }
 
@@ -48,7 +47,6 @@ wkr_err wkr_db_open(wkr_db* db, RCore* core, const char* filename)
     if(sql_count_rows(db->handle, "branches", &count) != WKR_OK ||
             sql_count_rows(db->handle, "hitcounts", &count) != WKR_OK ||
             sql_count_rows(db->handle, "mappings", &count) != WKR_OK) {
-        wkr_db_close(db);
         return WKR_FORMAT;
     }
 
@@ -61,7 +59,6 @@ wkr_err wkr_db_open(wkr_db* db, RCore* core, const char* filename)
     const char* file_basename = r_file_basename(core->bin->file);
 
     if((err = wkr_db_mappings(db, &mappings)) != WKR_OK) {
-        wkr_db_close(db);
         return err;
     }
 
@@ -76,7 +73,6 @@ wkr_err wkr_db_open(wkr_db* db, RCore* core, const char* filename)
     r_list_free(mappings);
 
     if(!is_present) {
-        wkr_db_close(db);
         return WKR_PROG;
     }
 
@@ -94,7 +90,6 @@ wkr_err wkr_db_open(wkr_db* db, RCore* core, const char* filename)
         }
 
         if(db->exec_off == 0) {
-            wkr_db_close(db);
             return WKR_FORMAT;
         }
     }
@@ -149,7 +144,7 @@ wkr_err wkr_db_mappings(wkr_db* db, RList** res)
 
     int err = 0;
     RList* mapping_list = r_list_newf(wkr_mapping_free);
-    
+
     while((err = sqlite3_step(query)) != SQLITE_DONE) {
         if(err != SQLITE_ROW) {
             r_list_free(mapping_list);
@@ -174,7 +169,7 @@ wkr_err wkr_db_bbs(wkr_db* db, RList** res)
 {
     sqlite3_stmt* query = NULL;
 
-    if(sqlite3_prepare_v2(db->handle, "SELECT * FROM hitcounts ORDER BY hitcount DESC;", -1, &query, 0) != SQLITE_OK) {
+    if(sqlite3_prepare_v2(db->handle, "SELECT * FROM hitcounts;", -1, &query, 0) != SQLITE_OK) {
         return WKR_SQLITE;
     }
 
@@ -188,7 +183,7 @@ wkr_err wkr_db_bbs(wkr_db* db, RList** res)
         }
 
         wkr_hitcount* hit = R_NEW0(wkr_hitcount);
-        hit->address = sqlite3_column_int64(query, 1);
+        hit->address = wkr_db_frompie(db, sqlite3_column_int64(query, 1));
         hit->count = sqlite3_column_int64(query, 2);
 
         r_list_append(hitcount_list, hit);
@@ -253,7 +248,7 @@ wkr_err wkr_db_xrefs(wkr_db* db, ut64 address, RList** res)
 ut64 wkr_db_frompie(wkr_db* db, ut64 address)
 {
     if(db->pie) {
-        // Should not happend
+        // Should not happen
         if(address < db->map_low || address > db->map_high)
             return address;
 
