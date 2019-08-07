@@ -10,7 +10,7 @@ PLUGIN=r2wakare.$(SO_EXT)
 
 all: $(PLUGIN)
 
-$(PLUGIN): wakare.o
+$(PLUGIN): wakare.o utils.o
 	$(CC) $(LDFLAGS) $^ -o $@
 
 %.o: %.c
