@@ -135,7 +135,7 @@ static void cmd_wkrx(RCore* core)
     wkr_err err;
     RList* xref_list;
     RListIter* iter;
-    wkr_hitcount* it_hitcount;
+    wkr_hitcount* hit;
 
     if((err = wkr_db_xrefs(&tracedb, core->offset, &xref_list)) != WKR_OK) {
         r_cons_printf("Error while gettings xrefs: %s\n", wkr_db_errmsg(&tracedb, err));
@@ -146,15 +146,19 @@ static void cmd_wkrx(RCore* core)
     r_cons_printf("--- Found %i xrefs from 0x%lx ---\n",
             r_list_length(xref_list), core->offset);
 
-    r_list_foreach(xref_list, iter, it_hitcount) {
-        r_cons_printf("0x%lx: %u\n", it_hitcount->address, it_hitcount->count);
+    r_list_sort(xref_list, bb_hitcount_cmp_dec);
+
+    r_list_foreach(xref_list, iter, hit) {
+        RAnalFunction* fcn = r_anal_get_fcn_in(core->anal, hit->address, 0);
+        const char* funcname = (fcn) ? fcn->name : "";
+        r_cons_printf("0x%lx: %lu %s\n", hit->address, hit->count, funcname);
     }
 
     r_list_free(xref_list);
 }
 
 // wkrbb: Displays the list of basic blocks
-static void cmd_wkrbl()
+static void cmd_wkrbl(RCore* core)
 {
     if(bb_list == NULL || tracedb.handle == NULL) {
         r_cons_printf("No database was loaded\n");
@@ -164,9 +168,10 @@ static void cmd_wkrbl()
     RListIter* iter;
     wkr_hitcount* hit;
 
-    // TODO: Add function name resolution
     r_list_foreach(bb_list, iter, hit) {
-        r_cons_printf("0x%lx: %lu\n", hit->address, hit->count);
+        RAnalFunction* fcn = r_anal_get_fcn_in(core->anal, hit->address, 0);
+        const char* funcname = (fcn) ? fcn->name : "";
+        r_cons_printf("0x%lx: %lu %s\n", hit->address, hit->count, funcname);
     }
 }
 
@@ -417,7 +422,7 @@ static int cmd_handler(void* user, const char* input)
         case 'b':
             switch(input[5]) {
                 case 'l':
-                    cmd_wkrbl();
+                    cmd_wkrbl(core);
                     break;
                 case 'h':
                     cmd_wkrbh(core);
