@@ -54,14 +54,13 @@ For now the project has a few limitations:
 ## Disassembler plugins
 Plugins for disassemblers can be found in the ```plugins/``` folder.
 
-- [Binary ninja](docs/binary-ninja.md)
-- [Radare2](docs/radare2.md)
+- [Binary ninja](https://github.com/SiD3W4y/wakare-ui)
+- [Radare2](https://github.com/SiD3W4y/r2wakare)
 
 ## Building
 All dependencies can be installed through your package manager of choice. The only exception is [libipt](https://github.com/intel/libipt) which needs to be built from source. Once all dependencies are installed you can build as follows:
 
 ```
-$ mkdir build
 $ cmake .
 $ make
 ```

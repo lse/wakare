@@ -3,7 +3,7 @@
 OK_TXT="\e[1;32mOK\e[1;0m"
 FAIL_TXT="\e[1;31mFAIL\e[1;0m"
 
-SAMPLES=(indirect-calls loop-intensive loop mini-vm multiple singleblock hex multi-small-calls)
+SAMPLES=(indirect-calls indirect-calls-vtable loop-intensive loop mini-vm multiple singleblock hex multi-small-calls)
 MODES=(pie nopie)
 
 # Checking for processor trace support
